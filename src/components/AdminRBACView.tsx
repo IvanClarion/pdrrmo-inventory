@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Skeleton from 'react-loading-skeleton';
 import { useInventory } from '../context/InventoryContext';
 import { GranularPermissions, UserRole, User, Location, LocationType, Department } from '../types';
 import { DEFAULT_ROLES } from '../data/mockData';
@@ -62,6 +63,7 @@ export const AdminRBACView: React.FC = () => {
     openLoginModal,
     requiresAuth,
     setActiveTab,
+    isLoadingDatabase,
   } = useInventory();
 
   const [activeSubTab, setActiveSubTab] = useState<'rbac' | 'users' | 'departments' | 'locations' | 'branding' | 'registrations'>('registrations');
@@ -574,7 +576,44 @@ export const AdminRBACView: React.FC = () => {
             </button>
           </div>
 
-          {users.length === 0 ? (
+          {isLoadingDatabase ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {Array.from({ length: 8 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="bg-white border border-[#E5E5E5] rounded-2xl p-4 shadow-sm space-y-3 flex flex-col justify-between"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <Skeleton circle width={44} height={44} />
+                      <div className="flex-1 min-w-0">
+                        <Skeleton width="75%" height={14} />
+                        <Skeleton width="90%" height={10} className="mt-1" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="p-2.5 rounded-xl bg-[#F9F9F9] border border-[#E5E5E5] flex justify-between items-center">
+                        <div className="w-1/2">
+                          <Skeleton width="50%" height={8} />
+                          <Skeleton width="80%" height={12} className="mt-1" />
+                        </div>
+                        <Skeleton width={50} height={18} borderRadius={4} />
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-[#F9F9F9] border border-[#E5E5E5] space-y-1.5">
+                        <Skeleton width="100%" height={10} />
+                        <Skeleton width="100%" height={10} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-[#E5E5E5] flex gap-2">
+                    <Skeleton width="45%" height={28} borderRadius={8} />
+                    <Skeleton width="35%" height={28} borderRadius={8} />
+                    <Skeleton width="15%" height={28} borderRadius={8} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : users.length === 0 ? (
             <div className="bg-white border-2 border-dashed border-gray-200 rounded-2xl p-12 text-center text-gray-400 text-xs">
               <Users className="w-10 h-10 text-gray-300 mx-auto mb-2" />
               <h4 className="text-sm font-bold text-gray-700">No Users in Database</h4>
@@ -804,105 +843,132 @@ export const AdminRBACView: React.FC = () => {
 
             {/* Departments Grid List */}
             <div className="lg:col-span-2 space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {filteredDepartments.map((dept) => {
-                  const assignedUsers = users.filter((u) => u.department === dept.name);
-                  const isDeleting = deletingDeptId === dept.id;
-
-                  return (
+              {isLoadingDatabase ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {Array.from({ length: 4 }).map((_, idx) => (
                     <div
-                      key={dept.id}
-                      className="bg-white border border-[#E5E5E5] rounded-2xl p-4 shadow-sm flex flex-col justify-between gap-3 hover:border-gray-400 transition"
+                      key={idx}
+                      className="bg-white border border-[#E5E5E5] rounded-2xl p-4 shadow-sm space-y-3"
                     >
-                      <div className="space-y-2">
-                        {/* Top Badge & Code */}
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 flex items-center justify-center shrink-0">
-                              <Building className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <h4 className="font-bold text-xs text-[#1A1A1A] leading-tight">
-                                {dept.name}
-                              </h4>
-                              {dept.code && (
-                                <span className="inline-block mt-0.5 px-2 py-0.5 bg-gray-100 text-gray-700 rounded-md text-[10px] font-mono font-bold">
-                                  {dept.code}
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                      <div className="flex items-center gap-2">
+                        <Skeleton width={32} height={32} borderRadius={12} />
+                        <div className="flex-1">
+                          <Skeleton width="65%" height={14} />
+                          <Skeleton width="30%" height={10} className="mt-1" />
                         </div>
-
-                        {/* Head & Description */}
-                        {dept.headName && (
-                          <div className="flex items-center gap-1.5 text-[11px] text-gray-600 font-medium">
-                            <span className="text-gray-400">Head:</span>
-                            <span className="font-semibold text-gray-800">{dept.headName}</span>
-                          </div>
-                        )}
-
-                        {dept.description && (
-                          <p className="text-[11px] text-gray-500 leading-relaxed line-clamp-2">
-                            {dept.description}
-                          </p>
-                        )}
                       </div>
-
-                      {/* Footer: Personnel Count & Actions */}
-                      <div className="pt-3 border-t border-[#E5E5E5] flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5">
-                          <Users className="w-3.5 h-3.5 text-gray-400" />
-                          <span className="text-[11px] font-bold text-gray-700">
-                            {assignedUsers.length} {assignedUsers.length === 1 ? 'staff' : 'staff members'}
-                          </span>
-                        </div>
-
-                        {isDeleting ? (
-                          <div className="flex items-center gap-1.5 animate-in fade-in">
-                            <span className="text-[10px] font-bold text-red-600">Confirm delete?</span>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteDept(dept.id)}
-                              className="px-2 py-1 bg-red-600 text-white rounded-lg text-[10px] font-bold hover:bg-red-700 transition"
-                            >
-                              Yes
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeletingDeptId(null)}
-                              className="px-2 py-1 bg-gray-200 text-gray-700 rounded-lg text-[10px] font-bold hover:bg-gray-300 transition"
-                            >
-                              No
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditDept(dept)}
-                              className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition"
-                              title="Edit Department"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeletingDeptId(dept.id)}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition"
-                              title="Delete Department"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        )}
+                      <div className="space-y-1">
+                        <Skeleton width="40%" height={10} />
+                        <Skeleton width="90%" height={10} />
+                      </div>
+                      <div className="pt-3 border-t border-[#E5E5E5] flex justify-between">
+                        <Skeleton width={80} height={14} />
+                        <Skeleton width={40} height={14} />
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {filteredDepartments.map((dept) => {
+                    const assignedUsers = users.filter((u) => u.department === dept.name);
+                    const isDeleting = deletingDeptId === dept.id;
 
-              {departments.length === 0 ? (
+                    return (
+                      <div
+                        key={dept.id}
+                        className="bg-white border border-[#E5E5E5] rounded-2xl p-4 shadow-sm flex flex-col justify-between gap-3 hover:border-gray-400 transition"
+                      >
+                        <div className="space-y-2">
+                          {/* Top Badge & Code */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 flex items-center justify-center shrink-0">
+                                <Building className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <h4 className="font-bold text-xs text-[#1A1A1A] leading-tight">
+                                  {dept.name}
+                                </h4>
+                                {dept.code && (
+                                  <span className="inline-block mt-0.5 px-2 py-0.5 bg-gray-100 text-gray-700 rounded-md text-[10px] font-mono font-bold">
+                                    {dept.code}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Head & Description */}
+                          {dept.headName && (
+                            <div className="flex items-center gap-1.5 text-[11px] text-gray-600 font-medium">
+                              <span className="text-gray-400">Head:</span>
+                              <span className="font-semibold text-gray-800">{dept.headName}</span>
+                            </div>
+                          )}
+
+                          {dept.description && (
+                            <p className="text-[11px] text-gray-500 leading-relaxed line-clamp-2">
+                              {dept.description}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Footer: Personnel Count & Actions */}
+                        <div className="pt-3 border-t border-[#E5E5E5] flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <Users className="w-3.5 h-3.5 text-gray-400" />
+                            <span className="text-[11px] font-bold text-gray-700">
+                              {assignedUsers.length} {assignedUsers.length === 1 ? 'staff' : 'staff members'}
+                            </span>
+                          </div>
+
+                          {isDeleting ? (
+                            <div className="flex items-center gap-1 bg-red-50 p-1 rounded-lg border border-red-200">
+                              <span className="text-[10px] text-red-700 font-bold px-1">Confirm delete?</span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteDept(dept.id)}
+                                className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold transition"
+                              >
+                                Yes
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingDeptId(null)}
+                                className="px-2 py-0.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-[10px] font-bold transition"
+                              >
+                                No
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditDept(dept)}
+                                className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                                title="Edit Department"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingDeptId(dept.id)}
+                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition"
+                                title="Delete Department"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {!isLoadingDatabase && departments.length === 0 ? (
                 <div className="bg-white border-2 border-dashed border-gray-200 rounded-2xl p-12 text-center text-gray-400 text-xs">
                   <Building className="w-10 h-10 text-gray-300 mx-auto mb-2" />
                   <h4 className="text-sm font-bold text-gray-700">No Departments in Database</h4>
@@ -910,7 +976,7 @@ export const AdminRBACView: React.FC = () => {
                     Add your official disaster response divisions or operational units using the form on the left.
                   </p>
                 </div>
-              ) : filteredDepartments.length === 0 ? (
+              ) : !isLoadingDatabase && filteredDepartments.length === 0 ? (
                 <div className="bg-white border border-[#E5E5E5] rounded-2xl p-8 text-center text-gray-400 text-xs">
                   No departments found matching &quot;{deptSearchTerm}&quot;.
                 </div>
@@ -924,13 +990,8 @@ export const AdminRBACView: React.FC = () => {
           {/* Create Location Form */}
           <form
             onSubmit={handleCreateLocation}
-            className="bg-white border border-[#E5E5E5] rounded-2xl p-5 shadow-sm space-y-3"
+            className="bg-white border border-[#E5E5E5] rounded-2xl p-5 shadow-sm space-y-4 h-fit"
           >
-            <div className="flex items-center gap-2 border-b border-[#E5E5E5] pb-2">
-              <MapPin className="w-4 h-4 text-black" />
-              <h3 className="font-bold text-[#1A1A1A] text-sm">Add Storage Bin / Warehouse</h3>
-            </div>
-
             <div>
               <label className="text-xs text-gray-500 font-bold block mb-1">Location Name *</label>
               <input
@@ -1002,7 +1063,29 @@ export const AdminRBACView: React.FC = () => {
               </div>
             </div>
 
-            {locations.length === 0 ? (
+            {isLoadingDatabase ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {Array.from({ length: 4 }).map((_, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3.5 rounded-2xl bg-[#F9F9F9] border border-[#E5E5E5] space-y-2"
+                  >
+                    <div className="flex justify-between items-start">
+                      <Skeleton width="60%" height={14} />
+                      <Skeleton width={50} height={16} borderRadius={4} />
+                    </div>
+                    <div className="flex justify-between">
+                      <Skeleton width="40%" height={10} />
+                      <Skeleton width="45%" height={10} />
+                    </div>
+                    <div className="pt-2 border-t border-[#E5E5E5] flex justify-end gap-1">
+                      <Skeleton width={24} height={24} borderRadius={6} />
+                      <Skeleton width={24} height={24} borderRadius={6} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : locations.length === 0 ? (
               <div className="text-center py-12 px-4 border-2 border-dashed border-gray-200 rounded-2xl bg-[#FAFAFA]">
                 <MapPin className="w-10 h-10 text-gray-300 mx-auto mb-2" />
                 <h4 className="text-sm font-bold text-gray-700">No Storage Locations in Database</h4>

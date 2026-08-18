@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Skeleton from 'react-loading-skeleton';
 import { useInventory } from '../context/InventoryContext';
 import { DashboardTopMetricsConfig, DashboardWidgetConfig, Item } from '../types';
 import {
@@ -61,6 +62,7 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
     currentUser,
     currentRole,
     hasPermission,
+    isLoadingDatabase,
   } = useInventory();
 
   // Admin Dashboard Customization Modal State
@@ -468,7 +470,28 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
             )}
           </div>
 
-          {visibleMetricCards.length > 0 ? (
+          {isLoadingDatabase ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="bg-white border border-[#E5E5E5] rounded-2xl p-5 shadow-sm space-y-3"
+                >
+                  <div className="flex justify-between items-center">
+                    <Skeleton width={100} height={12} />
+                    <Skeleton width={28} height={28} borderRadius={8} />
+                  </div>
+                  <div className="flex justify-between items-baseline">
+                    <Skeleton width={80} height={24} />
+                    <Skeleton width={50} height={16} borderRadius={4} />
+                  </div>
+                  <div className="pt-2 border-t border-[#E5E5E5]">
+                    <Skeleton width="70%" height={10} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : visibleMetricCards.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {visibleMetricCards.map((card) => {
                 const Icon = card.icon;

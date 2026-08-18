@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Skeleton from 'react-loading-skeleton';
 import { useInventory } from '../context/InventoryContext';
 import { Item } from '../types';
 import {
@@ -56,6 +57,7 @@ export const InventoryView: React.FC = () => {
     setInventoryStockFilter,
     selectedItemForDetail,
     setSelectedItemForDetail,
+    isLoadingDatabase,
   } = useInventory();
 
   // Layout View Mode: 'table' | 'grid'
@@ -454,17 +456,58 @@ export const InventoryView: React.FC = () => {
                   <th className="py-3.5 px-4">Category</th>
                   <th className="py-3.5 px-4">Location / Supplier</th>
                   <th className="py-3.5 px-4 text-center">Stock</th>
-                  <th className="py-3.5 px-4">Price (PHP)</th>
+              <th className="py-3.5 px-4">Price (PHP)</th>
                   <th className="py-3.5 px-4">Monitoring Status</th>
                   <th className="py-3.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E5E5E5]">
-                {filteredItems.length === 0 ? (
+                {isLoadingDatabase ? (
+                  Array.from({ length: 8 }).map((_, idx) => (
+                    <tr key={idx} className="border-b border-[#E5E5E5]">
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-3">
+                          <Skeleton width={44} height={44} borderRadius={12} />
+                          <div className="flex-1">
+                            <Skeleton width="70%" height={14} />
+                            <Skeleton width="40%" height={10} className="mt-1" />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <Skeleton width={80} height={14} />
+                        <Skeleton width={60} height={10} className="mt-1" />
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <Skeleton width={70} height={20} borderRadius={6} />
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <Skeleton width={90} height={12} />
+                        <Skeleton width={70} height={10} className="mt-1" />
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <Skeleton width={40} height={16} className="mx-auto" />
+                        <Skeleton width={60} height={8} className="mx-auto mt-1" />
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <Skeleton width={60} height={14} />
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <Skeleton width={70} height={20} borderRadius={6} />
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex justify-end gap-1">
+                          <Skeleton width={24} height={24} borderRadius={6} />
+                          <Skeleton width={24} height={24} borderRadius={6} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : filteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-gray-400">
-                      <Package className="w-8 h-8 mx-auto text-gray-300 mb-2" />
-                      <div className="font-bold text-gray-600">No inventory items found.</div>
+                    <td colSpan={8} className="py-16 text-center text-gray-400">
+                      <Package className="w-10 h-10 mx-auto text-gray-300 mb-2" />
+                      <div className="font-bold text-gray-600">No items found matching your criteria.</div>
                       <div className="text-xs text-gray-400 mt-0.5">
                         Try clearing search filters or click "+ Add Item" to register stock.
                       </div>
@@ -751,7 +794,32 @@ export const InventoryView: React.FC = () => {
       {/* ITEMS LIST (CARD GRID VIEW) */}
       {viewMode === 'grid' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filteredItems.length === 0 ? (
+          {isLoadingDatabase ? (
+            Array.from({ length: 8 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="bg-white border border-[#E5E5E5] rounded-2xl p-4 shadow-2xs space-y-3"
+              >
+                <Skeleton height={160} borderRadius={12} />
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Skeleton width="30%" height={12} />
+                    <Skeleton width="40%" height={12} />
+                  </div>
+                  <Skeleton width="85%" height={16} />
+                  <Skeleton width="60%" height={12} />
+                  <div className="p-2.5 rounded-xl bg-[#F9F9F9] border border-[#E5E5E5] flex justify-between">
+                    <Skeleton width="40%" height={14} />
+                    <Skeleton width="30%" height={14} />
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-[#E5E5E5] flex justify-between">
+                  <Skeleton width="30%" height={24} borderRadius={6} />
+                  <Skeleton width="30%" height={24} borderRadius={6} />
+                </div>
+              </div>
+            ))
+          ) : filteredItems.length === 0 ? (
             <div className="col-span-full bg-white border border-[#E5E5E5] rounded-2xl p-12 text-center text-gray-400">
               <Package className="w-10 h-10 mx-auto text-gray-300 mb-2" />
               <div className="font-bold text-gray-600">No items found matching your criteria.</div>

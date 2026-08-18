@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Skeleton from 'react-loading-skeleton';
 import { useInventory } from '../context/InventoryContext';
 import { UserRegistrationRequest, UserRole, UserRoleName } from '../types';
 import { DEFAULT_ROLES } from '../data/mockData';
@@ -43,6 +44,7 @@ export const AdminRegistrationsView: React.FC = () => {
     openLoginModal,
     currentUser,
     requiresAuth,
+    isLoadingDatabase,
   } = useInventory();
 
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
@@ -277,7 +279,32 @@ export const AdminRegistrationsView: React.FC = () => {
       </div>
 
       {/* Registrations List */}
-      {filteredRequests.length === 0 ? (
+      {isLoadingDatabase ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={idx} className="bg-white border border-[#E5E5E5] rounded-3xl p-5 shadow-sm space-y-4">
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-3">
+                  <Skeleton circle width={44} height={44} />
+                  <div>
+                    <Skeleton width={120} height={16} />
+                    <Skeleton width={160} height={12} className="mt-1" />
+                  </div>
+                </div>
+                <Skeleton width={70} height={22} borderRadius={8} />
+              </div>
+              <div className="space-y-2 p-3 bg-gray-50 rounded-2xl">
+                <Skeleton width="80%" height={12} />
+                <Skeleton width="60%" height={12} />
+              </div>
+              <div className="pt-2 border-t border-gray-100 flex justify-end gap-2">
+                <Skeleton width={80} height={32} borderRadius={10} />
+                <Skeleton width={80} height={32} borderRadius={10} />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : filteredRequests.length === 0 ? (
         <div className="bg-white border border-[#E5E5E5] rounded-3xl p-12 text-center space-y-3">
           <div className="w-12 h-12 rounded-2xl bg-gray-100 text-gray-400 flex items-center justify-center mx-auto">
             <UserCheck className="w-6 h-6" />

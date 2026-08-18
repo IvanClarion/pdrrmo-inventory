@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Skeleton from 'react-loading-skeleton';
 import { useInventory } from '../context/InventoryContext';
 import {
   History,
@@ -16,7 +17,7 @@ import {
 } from 'lucide-react';
 
 export const AuditLogsView: React.FC = () => {
-  const { auditLogs, transactions, hasPermission, purgeAuditLogs } = useInventory();
+  const { auditLogs, transactions, hasPermission, purgeAuditLogs, isLoadingDatabase } = useInventory();
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [severityFilter, setSeverityFilter] = useState<string>('ALL');
@@ -134,7 +135,37 @@ export const AuditLogsView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E5E5]">
-              {filteredLogs.map((log) => {
+              {isLoadingDatabase ? (
+                Array.from({ length: 6 }).map((_, idx) => (
+                  <tr key={idx}>
+                    <td className="py-3 px-4">
+                      <Skeleton width={140} height={12} />
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-2">
+                        <Skeleton circle width={24} height={24} />
+                        <div>
+                          <Skeleton width={80} height={12} />
+                          <Skeleton width={50} height={8} className="mt-0.5" />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <Skeleton width={100} height={14} />
+                    </td>
+                    <td className="py-3 px-4">
+                      <Skeleton width={60} height={18} borderRadius={4} />
+                    </td>
+                    <td className="py-3 px-4">
+                      <Skeleton width="90%" height={12} />
+                    </td>
+                    <td className="py-3 px-4">
+                      <Skeleton width={70} height={10} />
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                filteredLogs.map((log) => {
                 const dateStr = new Date(log.timestamp).toLocaleString();
                 return (
                   <tr key={log.id} className="hover:bg-[#F9F9F9] transition">
@@ -178,7 +209,8 @@ export const AuditLogsView: React.FC = () => {
                     <td className="py-3 px-4 font-mono text-[10px] text-gray-400">{log.ipAddress}</td>
                   </tr>
                 );
-              })}
+              })
+              )}
             </tbody>
           </table>
         </div>

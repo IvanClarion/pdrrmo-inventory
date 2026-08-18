@@ -111,6 +111,7 @@ interface InventoryContextType {
   branding: OrgBrandingConfig;
   updateBranding: (updates: Partial<OrgBrandingConfig>) => void;
   resetBrandingToDefault: () => void;
+  isLoadingDatabase: boolean;
   
   // Staff Registration & Admin Approval Queue
   registrationRequests: UserRegistrationRequest[];
@@ -520,6 +521,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isOfflineMode, setIsOfflineMode] = useState<boolean>(() => safeGetJson(STORAGE_KEYS.OFFLINE_FLAG, false));
   const [pendingCheckIns, setPendingCheckIns] = useState<PendingCheckIn[]>(() => isSupabaseConfigured() ? [] : safeGetJson(STORAGE_KEYS.PENDING_CHECKINS, []));
   const [registrationRequests, setRegistrationRequests] = useState<UserRegistrationRequest[]>(() => isSupabaseConfigured() ? [] : safeGetJson(STORAGE_KEYS.REGISTRATION_REQUESTS, []));
+  const [isLoadingDatabase, setIsLoadingDatabase] = useState<boolean>(() => isSupabaseConfigured());
 
   const pendingRegistrationCount = registrationRequests.filter((r) => r.status === 'PENDING').length;
 
@@ -936,6 +938,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       })
       .catch((err) => {
         console.warn('Initial Supabase database fetch notice:', err);
+      })
+      .finally(() => {
+        setIsLoadingDatabase(false);
       });
 
     // 2. Real-time changes subscription
@@ -2943,6 +2948,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         purgeAuditLogs,
         wipeAllItems,
         resetToDefaultSeedData,
+        isLoadingDatabase,
       }}
     >
       {children}

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import Skeleton from 'react-loading-skeleton';
 import { useInventory } from '../context/InventoryContext';
 import { Item, ItemCondition, PendingCheckIn } from '../types';
 import { PersonSelectorInput } from './PersonSelectorInput';
@@ -315,6 +316,7 @@ export const CheckInOutView: React.FC = () => {
     openCheckoutFormModal,
     generateCheckoutFormFromBatch,
     generateCheckoutFormFromTransaction,
+    isLoadingDatabase,
   } = useInventory();
 
   // Active view mode within Check In/Out tab: 'terminal' | 'pending_verification' | 'active_loans' | 'history'
@@ -1669,7 +1671,32 @@ export const CheckInOutView: React.FC = () => {
           </div>
 
           {/* Pending Requests List */}
-          {pendingRequests.length === 0 ? (
+          {isLoadingDatabase ? (
+            <div className="space-y-4">
+              {Array.from({ length: 3 }).map((_, idx) => (
+                <div key={idx} className="bg-white border border-[#E5E5E5] rounded-2xl p-5 shadow-sm space-y-4">
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-3">
+                      <Skeleton width={48} height={48} borderRadius={12} />
+                      <div>
+                        <Skeleton width={160} height={16} />
+                        <Skeleton width={120} height={12} className="mt-1" />
+                      </div>
+                    </div>
+                    <Skeleton width={80} height={24} borderRadius={8} />
+                  </div>
+                  <div className="p-3 bg-gray-50 rounded-xl space-y-2">
+                    <Skeleton width="90%" height={12} />
+                    <Skeleton width="60%" height={12} />
+                  </div>
+                  <div className="pt-2 border-t border-gray-100 flex justify-end gap-2">
+                    <Skeleton width={120} height={36} borderRadius={12} />
+                    <Skeleton width={80} height={36} borderRadius={12} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : pendingRequests.length === 0 ? (
             <div className="bg-white border border-[#E5E5E5] rounded-2xl p-12 text-center text-gray-400 space-y-3">
               <div className="w-12 h-12 mx-auto rounded-full bg-green-50 text-green-600 flex items-center justify-center">
                 <CheckCircle2 className="w-6 h-6" />
@@ -1775,7 +1802,28 @@ export const CheckInOutView: React.FC = () => {
             </div>
           </div>
 
-          {checkedOutTransactions.length === 0 ? (
+          {isLoadingDatabase ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 3 }).map((_, idx) => (
+                <div key={idx} className="bg-white border border-[#E5E5E5] rounded-2xl p-4 shadow-sm space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <Skeleton width={140} height={16} />
+                      <Skeleton width={100} height={10} />
+                    </div>
+                    <Skeleton width={60} height={20} borderRadius={6} />
+                  </div>
+                  <div className="p-2.5 bg-gray-50 rounded-xl space-y-1.5">
+                    <Skeleton width="80%" height={12} />
+                    <Skeleton width="60%" height={12} />
+                  </div>
+                  <div className="pt-2 border-t border-gray-100 flex justify-end">
+                    <Skeleton width={100} height={32} borderRadius={8} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : checkedOutTransactions.length === 0 ? (
             <div className="py-12 text-center text-gray-400 space-y-2">
               <CheckCircle2 className="w-12 h-12 mx-auto opacity-30 text-green-600" />
               <p className="text-xs font-medium">
