@@ -308,6 +308,7 @@ export function userToDb(u: User, passwordHash?: string): any {
         ? 'role-auditor'
         : 'role-staff';
   }
+  const generatedQr = u.userQrCode || `USR-QR-${u.id.toUpperCase()}`;
   return {
     id: u.id,
     name: u.name,
@@ -315,6 +316,11 @@ export function userToDb(u: User, passwordHash?: string): any {
     password_hash: passwordHash || u.password || 'staff123',
     role_id: roleId || 'role-staff',
     department: u.department || null,
+    position: u.position || null,
+    contact_number: u.phone || null,
+    user_qr_code: generatedQr,
+    pin: u.pin || '1234',
+    status: 'ACTIVE',
     assigned_location_id: u.assignedLocationId || null,
     avatar_url: u.avatarUrl || null,
     created_at: new Date().toISOString(),
@@ -346,6 +352,8 @@ export function dbToUser(row: any, roles: UserRole[] = []): User {
       ? 'audit123'
       : 'staff123';
 
+  const userQr = row.user_qr_code || row.userQrCode || `USR-QR-${row.id.toUpperCase()}`;
+
   return {
     id: row.id,
     name: row.name || row.email?.split('@')[0] || 'Officer',
@@ -358,7 +366,9 @@ export function dbToUser(row: any, roles: UserRole[] = []): User {
       row.avatar_url ||
       'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
     password: row.password_hash || defaultRolePassword,
-    phone: row.phone,
+    pin: row.pin || '1234',
+    userQrCode: userQr,
+    phone: row.contact_number || row.phone,
     position: row.position,
   };
 }

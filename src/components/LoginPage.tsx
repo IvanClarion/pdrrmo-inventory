@@ -9,7 +9,9 @@ import {
   isSupabaseConfigured,
   getSupabaseStatus,
   resetPasswordWithSupabase,
+  getSupabase,
 } from '../lib/supabase';
+import { dbToUser } from '../lib/database';
 import {
   Lock,
   KeyRound,
@@ -41,6 +43,7 @@ interface LoginPageProps {
 export const LoginPage: React.FC<LoginPageProps> = () => {
   const {
     users,
+    roles,
     loginUser,
     loginWithSupabase,
     branding,
@@ -211,20 +214,114 @@ export const LoginPage: React.FC<LoginPageProps> = () => {
     setIsCameraScanning(false);
   };
 
+  // Extract and normalize potential user lookup keys from raw scan input
+  const extractPotentialUserKeys = (rawInput: string): string[] => {
+    const clean = rawInput.trim();
+    if (!clean) return [];
+
+    const keys = new Set<string>();
+    keys.add(clean);
+    keys.add(clean.toLowerCase());
+    keys.add(clean.toUpperCase());
+
+    // 1. JSON payload parsing
+    if ((clean.startsWith('{') && clean.endsWith('}')) || (clean.startsWith('[') && clean.endsWith(']'))) {
+      try {
+        const parsed = JSON.parse(clean);
+        if (typeof parsed === 'object' && parsed !== null) {
+          if (parsed.userQrCode) keys.add(String(parsed.userQrCode).trim());
+          if (parsed.qrCode) keys.add(String(parsed.qrCode).trim());
+          if (parsed.badge) keys.add(String(parsed.badge).trim());
+          if (parsed.id) keys.add(String(parsed.id).trim());
+          if (parsed.userId) keys.add(String(parsed.userId).trim());
+          if (parsed.email) keys.add(String(parsed.email).trim());
+        }
+      } catch {}
+    }
+
+    // 2. Hardware AIM symbology prefix stripping
+    const strippedAim = clean.replace(/^\][A-Za-z0-9]{2}/, '').trim();
+    if (strippedAim && strippedAim !== clean) {
+      keys.add(strippedAim);
+      keys.add(strippedAim.toLowerCase());
+      keys.add(strippedAim.toUpperCase());
+    }
+
+    // 3. URL query parameter extraction
+    if (clean.includes('?') || clean.includes('/')) {
+      try {
+        const url = new URL(clean.startsWith('http') ? clean : `http://localhost/${clean}`);
+        const codeParam = url.searchParams.get('code') || url.searchParams.get('id') || url.searchParams.get('qr') || url.searchParams.get('email');
+        if (codeParam) {
+          keys.add(codeParam.trim());
+          keys.add(codeParam.trim().toLowerCase());
+        }
+      } catch {}
+    }
+
+    // 4. USR-QR prefix variations
+    if (clean.toUpperCase().startsWith('USR-QR-')) {
+      const rawId = clean.slice(7).trim();
+      if (rawId) {
+        keys.add(rawId);
+        keys.add(`usr-${rawId.toLowerCase()}`);
+      }
+    }
+
+    return Array.from(keys).filter(Boolean);
+  };
+
   // Verify scanned or typed QR Badge ID
-  const handleVerifyBadgeCode = (code: string) => {
-    const cleanCode = code.trim();
-    if (!cleanCode) {
+  const handleVerifyBadgeCode = async (code: string) => {
+    const rawClean = code.trim();
+    if (!rawClean) {
       setErrorMessage('Please enter or scan a valid QR Badge ID.');
       return;
     }
 
-    const matchedUser = users.find(
-      (u) =>
-        (u.userQrCode && u.userQrCode.toLowerCase() === cleanCode.toLowerCase()) ||
-        u.id.toLowerCase() === cleanCode.toLowerCase() ||
-        u.email.toLowerCase() === cleanCode.toLowerCase()
-    );
+    const potentialKeys = extractPotentialUserKeys(rawClean);
+
+    // 1. Search in local memory users
+    let matchedUser = users.find((u) => {
+      const uQr = (u.userQrCode || '').toLowerCase();
+      const uId = (u.id || '').toLowerCase();
+      const uEmail = (u.email || '').toLowerCase();
+      const uDerivedQr = `usr-qr-${u.id.toUpperCase()}`.toLowerCase();
+
+      return potentialKeys.some((k) => {
+        const kLower = k.toLowerCase();
+        return (
+          (uQr && uQr === kLower) ||
+          uId === kLower ||
+          uEmail === kLower ||
+          uDerivedQr === kLower
+        );
+      });
+    });
+
+    // 2. Dynamic Supabase Database Query Fallback if not in memory
+    if (!matchedUser && isSupabaseConfigured()) {
+      const client = getSupabase();
+      if (client) {
+        try {
+          for (const key of potentialKeys) {
+            const { data, error } = await client
+              .from('users')
+              .select('*')
+              .or(`user_qr_code.ilike.${key},id.ilike.${key},email.ilike.${key}`)
+              .limit(1);
+
+            if (!error && data && data.length > 0) {
+              const dbUser = dbToUser(data[0], roles);
+              matchedUser = dbUser;
+              break;
+            }
+          }
+        } catch (dbErr) {
+          console.warn('Supabase live user query error:', dbErr);
+        }
+      }
+    }
 
     if (matchedUser) {
       audioService.playSuccessSound();
@@ -234,7 +331,7 @@ export const LoginPage: React.FC<LoginPageProps> = () => {
       stopCameraScanner();
     } else {
       audioService.playErrorSound();
-      setErrorMessage(`Badge ID "${cleanCode}" is not recognized in staff records.`);
+      setErrorMessage(`Badge ID "${rawClean}" is not recognized in staff records.`);
     }
   };
 
