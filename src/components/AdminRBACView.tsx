@@ -1348,17 +1348,6 @@ export const AdminRBACView: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="font-bold text-[#1A1A1A] block mb-1">User QR Badge Payload</label>
-                <input
-                  type="text"
-                  value={userForm.userQrCode}
-                  onChange={(e) => setUserForm({ ...userForm, userQrCode: e.target.value })}
-                  placeholder="e.g. USR-QR-1002"
-                  className="w-full px-3 py-2 bg-[#F5F5F5] border border-[#E5E5E5] rounded-xl text-xs font-mono font-medium focus:outline-none focus:border-black"
-                />
-              </div>
-
               <ProfilePhotoUploadInput
                 label="Profile Photo / Avatar"
                 value={userForm.avatarUrl}

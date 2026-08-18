@@ -138,9 +138,6 @@ export const UserQRBadgeModal: React.FC<UserQRBadgeModalProps> = ({ user, isOpen
             {/* Rendered QR Code */}
             <div className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl border border-[#E5E5E5] shadow-inner">
               <canvas ref={canvasRef} className="max-w-[170px] max-h-[170px]" />
-              <span className="text-[11px] font-mono font-bold text-[#1A1A1A] mt-1 tracking-wider bg-gray-100 px-2 py-0.5 rounded border border-[#E5E5E5]">
-                {qrPayload}
-              </span>
             </div>
           </div>
 
