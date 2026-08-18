@@ -1,10 +1,10 @@
 import React, { useRef, useState } from 'react';
-import { Camera, Upload, X, User as UserIcon, Link, Sparkles } from 'lucide-react';
-import { uploadUserProfilePhotoToSupabase } from '../lib/supabase';
+import { Camera, Upload, X, User as UserIcon, Link, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { uploadUserProfilePhotoToSupabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface ProfilePhotoUploadInputProps {
   value?: string;
-  onChange: (avatarDataUrl: string) => void;
+  onChange: (avatarUrl: string) => void;
   label?: string;
 }
 
@@ -16,6 +16,8 @@ export const ProfilePhotoUploadInput: React.FC<ProfilePhotoUploadInputProps> = (
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlText, setUrlText] = useState('');
 
@@ -27,31 +29,32 @@ export const ProfilePhotoUploadInput: React.FC<ProfilePhotoUploadInputProps> = (
       return;
     }
 
-    // Limit file size to ~5MB before encoding
-    if (file.size > 5 * 1024 * 1024) {
-      alert('Image file size is too large. Please select an image under 5MB.');
+    if (file.size > 10 * 1024 * 1024) {
+      alert('Image file size is too large. Please select an image under 10MB.');
       return;
     }
 
-    // Immediate local preview
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      if (result) {
-        onChange(result);
-      }
-    };
-    reader.readAsDataURL(file);
-
-    // Upload to Supabase Storage 'user_profile' bucket
     setIsUploading(true);
+    setUploadStatus('idle');
+    setErrorMessage(null);
+
     try {
-      const publicUrl = await uploadUserProfilePhotoToSupabase(file, label || 'avatar');
+      if (!isSupabaseConfigured()) {
+        throw new Error('Supabase client is not connected.');
+      }
+
+      // Upload directly to Supabase Storage 'user_profile' bucket
+      const publicUrl = await uploadUserProfilePhotoToSupabase(file, 'user_avatar');
       if (publicUrl) {
         onChange(publicUrl);
+        setUploadStatus('success');
+        setTimeout(() => setUploadStatus('idle'), 3000);
       }
-    } catch (err) {
-      console.warn('Direct Supabase user_profile bucket upload notice (fallback to preview):', err);
+    } catch (err: any) {
+      console.error('Supabase storage user_profile upload error:', err);
+      const msg = err?.message || 'Failed to upload photo to storage bucket.';
+      setErrorMessage(msg);
+      setUploadStatus('error');
     } finally {
       setIsUploading(false);
     }
@@ -80,15 +83,10 @@ export const ProfilePhotoUploadInput: React.FC<ProfilePhotoUploadInputProps> = (
       onChange(urlText.trim());
       setShowUrlInput(false);
       setUrlText('');
+      setUploadStatus('success');
+      setTimeout(() => setUploadStatus('idle'), 3000);
     }
   };
-
-  const PRESET_AVATARS = [
-    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-    'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
-    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
-  ];
 
   return (
     <div className="space-y-2">
@@ -118,24 +116,24 @@ export const ProfilePhotoUploadInput: React.FC<ProfilePhotoUploadInputProps> = (
           />
           <button
             type="submit"
-            className="px-3 py-2 bg-black text-white rounded-xl text-xs font-bold hover:bg-neutral-800 transition"
+            className="px-3 py-2 bg-black text-white rounded-xl text-xs font-bold hover:bg-neutral-800 transition cursor-pointer"
           >
             Apply
           </button>
         </form>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {/* Main Upload / Drag-and-Drop Dropzone */}
           <div
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => !isUploading && fileInputRef.current?.click()}
             className={`p-4 rounded-2xl border-2 border-dashed transition cursor-pointer flex items-center gap-4 ${
               isDragging
                 ? 'border-emerald-500 bg-emerald-50/50'
-                : value
-                ? 'border-[#E5E5E5] bg-[#F9F9F9] hover:bg-[#F0F0F0]'
+                : value && !value.startsWith('data:')
+                ? 'border-emerald-300 bg-emerald-50/30 hover:bg-emerald-50/50'
                 : 'border-gray-300 bg-[#F5F5F5] hover:bg-[#EAEAEA]'
             }`}
           >
@@ -149,11 +147,15 @@ export const ProfilePhotoUploadInput: React.FC<ProfilePhotoUploadInputProps> = (
 
             {/* Profile Avatar Frame */}
             <div className="relative shrink-0">
-              {value ? (
+              {isUploading ? (
+                <div className="w-14 h-14 rounded-full bg-black/10 flex items-center justify-center">
+                  <Loader2 className="w-6 h-6 animate-spin text-black" />
+                </div>
+              ) : value ? (
                 <div className="relative">
                   <img
                     src={value}
-                    alt="Profile Avatar Preview"
+                    alt="Profile Avatar"
                     className="w-14 h-14 rounded-full object-cover border-2 border-black shadow-xs"
                   />
                   <button
@@ -161,8 +163,9 @@ export const ProfilePhotoUploadInput: React.FC<ProfilePhotoUploadInputProps> = (
                     onClick={(e) => {
                       e.stopPropagation();
                       onChange('');
+                      setUploadStatus('idle');
                     }}
-                    className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center hover:bg-red-700 transition shadow-xs"
+                    className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center hover:bg-red-700 transition shadow-xs cursor-pointer"
                     title="Remove Photo"
                   >
                     <X className="w-3 h-3" />
@@ -179,34 +182,38 @@ export const ProfilePhotoUploadInput: React.FC<ProfilePhotoUploadInputProps> = (
             <div className="flex-1 min-w-0">
               <p className="font-bold text-xs text-[#1A1A1A] flex items-center gap-1.5">
                 <Upload className="w-3.5 h-3.5 text-black" />
-                <span>{value ? 'Change Profile Photo' : 'Upload Profile Photo'}</span>
+                <span>
+                  {isUploading
+                    ? 'Uploading to Supabase storage...'
+                    : value
+                    ? 'Change Profile Photo'
+                    : 'Upload to user_profile Bucket'}
+                </span>
               </p>
-              <p className="text-[10px] text-gray-500 mt-0.5">
-                Drag & drop image file here, or click to browse (PNG, JPG up to 3MB)
+              <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+                {isUploading
+                  ? 'Optimizing and syncing to cloud bucket...'
+                  : value && !value.startsWith('data:')
+                  ? 'Cloud photo linked to user_profile bucket'
+                  : 'Drag & drop image (PNG, JPG, WebP) — saved directly to Supabase'}
               </p>
             </div>
           </div>
 
-          {/* Quick Preset Samples */}
-          <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-              Or Choose Sample Avatar:
-            </p>
-            <div className="flex items-center gap-2">
-              {PRESET_AVATARS.map((url, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => onChange(url)}
-                  className={`w-8 h-8 rounded-full border-2 transition overflow-hidden cursor-pointer ${
-                    value === url ? 'border-black ring-2 ring-emerald-400' : 'border-gray-200 hover:border-gray-400'
-                  }`}
-                >
-                  <img src={url} alt={`Preset ${idx + 1}`} className="w-full h-full object-cover" />
-                </button>
-              ))}
+          {/* Upload Status Toast */}
+          {uploadStatus === 'success' && (
+            <div className="px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] font-bold text-emerald-800 flex items-center gap-1.5 animate-fade-in">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>Photo uploaded directly to Supabase &quot;user_profile&quot; bucket!</span>
             </div>
-          </div>
+          )}
+
+          {uploadStatus === 'error' && errorMessage && (
+            <div className="px-3 py-1.5 bg-red-50 border border-red-200 rounded-xl text-[11px] font-bold text-red-800 flex items-center gap-1.5 animate-fade-in">
+              <AlertCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+              <span className="truncate">{errorMessage}</span>
+            </div>
+          )}
         </div>
       )}
     </div>

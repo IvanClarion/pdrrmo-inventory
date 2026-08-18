@@ -130,8 +130,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
 
   // Custom Image URL or Uploaded Base64
   const hasCustomImage =
-    (branding.logoType === 'upload' || branding.logoType === 'url') &&
-    branding.customLogoUrl &&
+    Boolean(branding.customLogoUrl) &&
     !imageError;
 
   if (hasCustomImage) {

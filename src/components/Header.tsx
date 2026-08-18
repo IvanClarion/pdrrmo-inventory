@@ -32,7 +32,6 @@ export const Header: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModa
     toggleOfflineMode,
     offlineQueue,
     syncOfflineQueue,
-    resetToDefaultSeedData,
     authenticatedUserId,
     isSessionAuthenticated,
     openLoginModal,
@@ -301,16 +300,6 @@ export const Header: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModa
                     </button>
                   );
                 })}
-              </div>
-
-              <div className="mt-2 pt-1.5 border-t border-[#E5E5E5]">
-                <button
-                  onClick={resetToDefaultSeedData}
-                  className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs text-gray-500 hover:text-black hover:bg-[#F5F5F5] flex items-center gap-1.5 font-medium cursor-pointer"
-                >
-                  <RotateCcw className="w-3.5 h-3.5 text-gray-400" />
-                  <span>Reset Demo Data & Credentials</span>
-                </button>
               </div>
             </div>
           </div>

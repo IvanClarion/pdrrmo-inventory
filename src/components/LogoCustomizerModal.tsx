@@ -86,10 +86,14 @@ export const LogoCustomizer: React.FC<LogoCustomizerProps> = ({
         }));
         setActiveMode('upload');
         setIsUploading(false);
+        setUploadError(null);
+        setSaveNotification('Logo uploaded to Supabase "logo" bucket! Click Save to apply.');
+        setTimeout(() => setSaveNotification(null), 4000);
         return;
       } catch (uploadErr: any) {
-        console.warn('Supabase logo upload failed, falling back to local Base64:', uploadErr);
-        setUploadError('Cloud upload failed — saving locally instead.');
+        console.warn('Supabase logo upload notice:', uploadErr);
+        const errMsg = uploadErr?.message || 'Check storage permissions';
+        setUploadError(`Storage notice (${errMsg}) — saving locally & to database.`);
         setIsUploading(false);
         // Fall through to Base64 fallback below
       }

@@ -87,6 +87,8 @@ import {
   dbToRole,
   dbToPurchaseOrder,
   dbToRegistrationRequest,
+  dbUpsertSystemIdentity,
+  dbToSystemIdentity,
 } from '../lib/database';
 
 interface InventoryContextType {
@@ -443,55 +445,30 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Load or fallback to initial data
   const [roles, setRoles] = useState<UserRole[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.ROLES);
-    if (saved) {
-      try {
-        const parsed: UserRole[] = JSON.parse(saved);
-        return parsed.map((r) => {
-          const defaultRole = DEFAULT_ROLES.find((dr) => dr.id === r.id || dr.name === r.name);
-          return {
-            ...r,
-            permissions: {
-              ...(defaultRole ? defaultRole.permissions : {}),
-              ...r.permissions,
-              canVerifyCheckIn:
-                r.permissions.canVerifyCheckIn !== undefined
-                  ? r.permissions.canVerifyCheckIn
-                  : r.name === 'Admin' || r.name === 'Inventory Manager',
-            },
-          };
-        });
-      } catch (e) {
-        return DEFAULT_ROLES;
-      }
+    if (isSupabaseConfigured()) {
+      return safeGetJson(STORAGE_KEYS.ROLES, []);
     }
-    return DEFAULT_ROLES;
+    return safeGetJson(STORAGE_KEYS.ROLES, DEFAULT_ROLES);
   });
 
   const [users, setUsers] = useState<User[]>(() => {
+    if (isSupabaseConfigured()) {
+      return safeGetJson(STORAGE_KEYS.USERS, []);
+    }
     const saved = localStorage.getItem(STORAGE_KEYS.USERS);
     if (saved) {
       try {
-        const parsed: User[] = JSON.parse(saved);
-        // Ensure passwords and PINs exist for all users
-        return parsed.map((u) => {
-          const initUser = INITIAL_USERS.find((iu) => iu.id === u.id || iu.name === u.name);
-          return {
-            ...u,
-            password: u.password || initUser?.password || (u.roleName === 'Admin' ? 'admin123' : u.roleName === 'Inventory Manager' ? 'manager123' : 'staff123'),
-            pin: u.pin || initUser?.pin || (u.roleName === 'Admin' ? '1234' : u.roleName === 'Inventory Manager' ? '2345' : '3456'),
-          };
-        });
+        return JSON.parse(saved);
       } catch (e) {
-        return INITIAL_USERS;
+        return [];
       }
     }
-    return INITIAL_USERS;
+    return [];
   });
 
   const [currentUserId, setCurrentUserId] = useState<string>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID);
-    return saved || INITIAL_USERS[0].id;
+    return saved || '';
   });
 
   // Track authenticated user ID for active logged in session
@@ -502,11 +479,25 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [targetLoginUser, setTargetLoginUser] = useState<User | null>(null);
 
+  const fallbackUser: User = {
+    id: 'usr-guest',
+    name: 'Staff Officer',
+    email: '',
+    roleId: 'role-staff',
+    roleName: 'Staff',
+    department: '',
+  };
+  const fallbackRole: UserRole = DEFAULT_ROLES[0];
+
   const currentUser =
     (authenticatedUserId ? users.find((u) => u.id === authenticatedUserId) : null) ||
     users.find((u) => u.id === currentUserId) ||
-    users[0];
-  const currentRole = roles.find((r) => r.id === currentUser.roleId) || roles[0];
+    users[0] ||
+    fallbackUser;
+  const currentRole =
+    roles.find((r) => r.id === currentUser.roleId || r.name.toLowerCase() === (currentUser.roleName || '').toLowerCase()) ||
+    roles[0] ||
+    fallbackRole;
   const isAdmin = currentUser.roleName === 'Admin' || currentRole.name === 'Admin';
 
   const requiresAuth = (userOrRoleName: User | string): boolean => {
@@ -520,8 +511,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const isPrivilegedManagerOrAdmin = isAdmin || currentUser.roleName === 'Inventory Manager';
 
   const [items, setItems] = useState<Item[]>(() => isSupabaseConfigured() ? [] : safeGetJson(STORAGE_KEYS.ITEMS, []));
-  const [locations, setLocations] = useState<Location[]>(() => safeGetJson(STORAGE_KEYS.LOCATIONS, INITIAL_LOCATIONS));
-  const [vendors, setVendors] = useState<Vendor[]>(() => safeGetJson(STORAGE_KEYS.VENDORS, INITIAL_VENDORS));
+  const [locations, setLocations] = useState<Location[]>(() => isSupabaseConfigured() ? [] : safeGetJson(STORAGE_KEYS.LOCATIONS, []));
+  const [vendors, setVendors] = useState<Vendor[]>(() => isSupabaseConfigured() ? [] : safeGetJson(STORAGE_KEYS.VENDORS, []));
   const [transactions, setTransactions] = useState<Transaction[]>(() => isSupabaseConfigured() ? [] : safeGetJson(STORAGE_KEYS.TRANSACTIONS, []));
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => isSupabaseConfigured() ? [] : safeGetJson(STORAGE_KEYS.LOGS, []));
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => isSupabaseConfigured() ? [] : safeGetJson(STORAGE_KEYS.POS, []));
@@ -533,7 +524,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const pendingRegistrationCount = registrationRequests.filter((r) => r.status === 'PENDING').length;
 
   // Dynamic Departments & Divisions list state (Admin configurable)
-  const [departments, setDepartments] = useState<Department[]>(() => safeGetJson(STORAGE_KEYS.DEPARTMENTS, INITIAL_DEPARTMENTS));
+  const [departments, setDepartments] = useState<Department[]>(() => isSupabaseConfigured() ? [] : safeGetJson(STORAGE_KEYS.DEPARTMENTS, []));
 
   // Cross-view Navigation Filter state
   const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState<string>('ALL');
@@ -621,6 +612,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const updateBranding = (updates: Partial<OrgBrandingConfig>) => {
     setBranding((prev) => {
       const next = { ...prev, ...updates };
+      safeSetJson(STORAGE_KEYS.BRANDING, next);
+      dbUpsertSystemIdentity(next).catch(() => {});
       addAuditLog('BRANDING_UPDATED', `Updated organization branding and logo configurations (${next.orgName})`);
       return next;
     });
@@ -628,7 +621,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const resetBrandingToDefault = () => {
     setBranding(DEFAULT_BRANDING);
-    addAuditLog('BRANDING_RESET', 'Reset organization logo and branding to default PDRRMO configuration.');
+    safeSetJson(STORAGE_KEYS.BRANDING, DEFAULT_BRANDING);
+    dbUpsertSystemIdentity(DEFAULT_BRANDING).catch(() => {});
+    addAuditLog('BRANDING_RESET', 'Reset organization logo and branding to default configuration.');
   };
 
   // Tab Accessibility & Role Visibility Control
@@ -891,77 +886,18 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // 1. Initial bulk fetch from Supabase database tables
     fetchAllFromSupabase()
       .then((data) => {
-        if (data.roles !== undefined && data.roles.length > 0) {
-          const mergedRoles = [...data.roles];
-          DEFAULT_ROLES.forEach((defaultRole) => {
-            const exists = mergedRoles.some(
-              (r) => r.id === defaultRole.id || r.name.toLowerCase() === defaultRole.name.toLowerCase()
-            );
-            if (!exists) {
-              mergedRoles.push(defaultRole);
-              dbUpsertRole(defaultRole).catch(() => {});
-            }
-          });
-          setRoles(mergedRoles);
-        } else {
-          setRoles(DEFAULT_ROLES);
-          DEFAULT_ROLES.forEach((r) => dbUpsertRole(r).catch(() => {}));
+        if (data.roles !== undefined) {
+          if (data.roles.length > 0) {
+            setRoles(data.roles);
+            safeSetJson(STORAGE_KEYS.ROLES, data.roles);
+          } else {
+            setRoles(DEFAULT_ROLES);
+            DEFAULT_ROLES.forEach((r) => dbUpsertRole(r).catch(() => {}));
+          }
         }
-        if (data.users !== undefined && data.users.length > 0) {
-          // Merge database users with locally saved users so edits and custom columns persist cleanly
-          setUsers((prevUsers) => {
-            const savedLocalRaw = localStorage.getItem(STORAGE_KEYS.USERS);
-            let localUsersList = prevUsers;
-            if (savedLocalRaw) {
-              try {
-                localUsersList = JSON.parse(savedLocalRaw);
-              } catch {}
-            }
-
-            const dbUsersMap = new Map<string, User>();
-            data.users!.forEach((dbU) => {
-              dbUsersMap.set(String(dbU.id).toLowerCase(), dbU);
-              dbUsersMap.set(String(dbU.email).toLowerCase(), dbU);
-            });
-
-            const merged = localUsersList.map((localU) => {
-              const matchedDb =
-                dbUsersMap.get(String(localU.id).toLowerCase()) ||
-                dbUsersMap.get(String(localU.email).toLowerCase());
-
-              if (!matchedDb) return localU;
-
-              return {
-                ...matchedDb,
-                ...localU,
-                // Ensure integrity of role, name, department, credentials
-                name: localU.name || matchedDb.name,
-                email: localU.email || matchedDb.email,
-                roleName: localU.roleName || matchedDb.roleName,
-                roleId: localU.roleId || matchedDb.roleId,
-                department: localU.department || matchedDb.department,
-                userQrCode: localU.userQrCode || matchedDb.userQrCode,
-                password: localU.password || matchedDb.password,
-                pin: localU.pin || matchedDb.pin,
-                avatarUrl: localU.avatarUrl || matchedDb.avatarUrl,
-              };
-            });
-
-            // Append any users from database that aren't in local storage yet
-            data.users!.forEach((dbU) => {
-              const exists = merged.some(
-                (m) =>
-                  String(m.id).toLowerCase() === String(dbU.id).toLowerCase() ||
-                  String(m.email).toLowerCase() === String(dbU.email).toLowerCase()
-              );
-              if (!exists) {
-                merged.push(dbU);
-              }
-            });
-
-            safeSetJson(STORAGE_KEYS.USERS, merged);
-            return merged;
-          });
+        if (data.users !== undefined) {
+          setUsers(data.users);
+          safeSetJson(STORAGE_KEYS.USERS, data.users);
 
           const savedAuthId = localStorage.getItem(STORAGE_KEYS.AUTH_USER_ID);
           const active = data.users.find(
@@ -971,16 +907,31 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             ensureSupabaseAuthSession(active.email, active.password).catch(() => {});
           }
         }
-        if (data.items !== undefined) setItems(data.items);
-        if (data.locations !== undefined && data.locations.length > 0) setLocations(data.locations);
-        if (data.vendors !== undefined && data.vendors.length > 0) setVendors(data.vendors);
-        if (data.transactions !== undefined) setTransactions(data.transactions);
-        if (data.departments !== undefined && data.departments.length > 0) setDepartments(data.departments);
+        if (data.locations !== undefined) {
+          setLocations(data.locations);
+          safeSetJson(STORAGE_KEYS.LOCATIONS, data.locations);
+        }
+        if (data.vendors !== undefined) {
+          setVendors(data.vendors);
+          safeSetJson(STORAGE_KEYS.VENDORS, data.vendors);
+        }
+        if (data.transactions !== undefined) {
+          setTransactions(data.transactions);
+          safeSetJson(STORAGE_KEYS.TRANSACTIONS, data.transactions);
+        }
+        if (data.departments !== undefined) {
+          setDepartments(data.departments);
+          safeSetJson(STORAGE_KEYS.DEPARTMENTS, data.departments);
+        }
         if (data.pendingCheckIns !== undefined) setPendingCheckIns(data.pendingCheckIns);
         if (data.purchaseOrders !== undefined) setPurchaseOrders(data.purchaseOrders);
         if (data.registrationRequests !== undefined) setRegistrationRequests(data.registrationRequests);
         if (data.auditLogs !== undefined) {
           setAuditLogs(data.auditLogs);
+        }
+        if (data.systemIdentity !== undefined) {
+          setBranding(data.systemIdentity);
+          safeSetJson(STORAGE_KEYS.BRANDING, data.systemIdentity);
         }
       })
       .catch((err) => {
@@ -1122,6 +1073,17 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setRegistrationRequests((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
           } else if (payload.eventType === 'DELETE') {
             setRegistrationRequests((prev) => prev.filter((r) => r.id !== payload.old.id));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'system_identity' },
+        (payload) => {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const identity = dbToSystemIdentity(payload.new);
+            setBranding(identity);
+            safeSetJson(STORAGE_KEYS.BRANDING, identity);
           }
         }
       )
@@ -2185,28 +2147,51 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const newLoc: Location = {
       ...locData,
       id: `loc-${Date.now()}`,
+      name: locData.name.trim(),
+      code: locData.code.trim().toUpperCase(),
+      capacity: Number(locData.capacity || 1000),
+      currentCount: Number(locData.currentCount || 0),
     };
-    setLocations((prev) => [...prev, newLoc]);
+    
+    setLocations((prev) => {
+      const nextList = [...prev, newLoc];
+      safeSetJson(STORAGE_KEYS.LOCATIONS, nextList);
+      return nextList;
+    });
+
     dbUpsertLocation(newLoc).catch(() => {});
     addAuditLog('LOCATION_CREATED', `Created new storage location: ${newLoc.name} (${newLoc.code})`);
     return newLoc;
   };
 
   const editLocation = (id: string, updates: Partial<Location>) => {
-    setLocations((prev) =>
-      prev.map((loc) => {
-        if (loc.id === id) {
-          const updatedLoc = { ...loc, ...updates };
-          dbUpsertLocation(updatedLoc).catch(() => {});
-          return updatedLoc;
-        }
-        return loc;
-      })
-    );
+    const cleanId = String(id).trim();
+
+    setLocations((prev) => {
+      const existing = prev.find((loc) => String(loc.id).trim().toLowerCase() === cleanId.toLowerCase());
+      if (!existing) return prev;
+
+      const updatedLoc: Location = {
+        ...existing,
+        ...updates,
+        name: updates.name !== undefined ? updates.name.trim() : existing.name,
+        code: updates.code !== undefined ? updates.code.trim().toUpperCase() : existing.code,
+        capacity: updates.capacity !== undefined ? Number(updates.capacity) : existing.capacity,
+      };
+
+      dbUpsertLocation(updatedLoc).catch(() => {});
+
+      const nextList = prev.map((loc) =>
+        String(loc.id).trim().toLowerCase() === cleanId.toLowerCase() ? updatedLoc : loc
+      );
+      safeSetJson(STORAGE_KEYS.LOCATIONS, nextList);
+      return nextList;
+    });
+
     if (updates.name) {
       setItems((prev) =>
         prev.map((item) =>
-          item.locationId === id ? { ...item, locationName: updates.name! } : item
+          item.locationId === id ? { ...item, locationName: updates.name!.trim() } : item
         )
       );
     }
@@ -2214,37 +2199,28 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const deleteLocation = (id: string) => {
-    const target = locations.find((l) => l.id === id);
-    const remaining = locations.filter((l) => l.id !== id);
+    const cleanId = String(id).trim();
+    const target = locations.find((l) => String(l.id).trim().toLowerCase() === cleanId.toLowerCase());
     dbDeleteLocation(id).catch(() => {});
-    if (remaining.length === 0) {
-      // Create a fallback default location if deleting the only one
-      const fallback: Location = {
-        id: 'loc-main',
-        name: 'Main Warehouse',
-        code: 'WH-MAIN',
-        type: 'Warehouse',
-        capacity: 5000,
-      };
-      setLocations([fallback]);
-      dbUpsertLocation(fallback).catch(() => {});
-      setItems((prev) =>
-        prev.map((item) =>
-          item.locationId === id
-            ? { ...item, locationId: fallback.id, locationName: fallback.name }
-            : item
-        )
-      );
-    } else {
-      setLocations(remaining);
-      setItems((prev) =>
-        prev.map((item) =>
-          item.locationId === id
-            ? { ...item, locationId: remaining[0].id, locationName: remaining[0].name }
-            : item
-        )
-      );
-    }
+
+    setLocations((prev) => {
+      const remaining = prev.filter((l) => String(l.id).trim().toLowerCase() !== cleanId.toLowerCase());
+      if (remaining.length === 0) {
+        const fallback: Location = {
+          id: 'loc-main',
+          name: 'Main Warehouse',
+          code: 'WH-MAIN',
+          type: 'Warehouse',
+          capacity: 5000,
+        };
+        dbUpsertLocation(fallback).catch(() => {});
+        safeSetJson(STORAGE_KEYS.LOCATIONS, [fallback]);
+        return [fallback];
+      }
+      safeSetJson(STORAGE_KEYS.LOCATIONS, remaining);
+      return remaining;
+    });
+
     if (target) {
       addAuditLog('LOCATION_DELETED', `Deleted storage location: ${target.name} (${target.code})`, 'warning');
     }
@@ -2274,8 +2250,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return nextList;
     });
 
-    // Save user to Supabase database with password
-    dbUpsertUser(newUser, effectivePassword).catch(() => {});
+    // Save user to Supabase database with password & department matching
+    dbUpsertUser(newUser, effectivePassword, departments).catch(() => {});
 
     // Register in Supabase Auth so the user can log in with signInWithPassword
     if (newUser.email) {
@@ -2326,8 +2302,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         roleId: updates.roleId || existing.roleId,
       };
 
-      // Persist to Supabase asynchronously
-      dbUpsertUser(updatedUser, updatedUser.password).catch((err) => {
+      // Persist to Supabase asynchronously with department matching
+      dbUpsertUser(updatedUser, updatedUser.password, departments).catch((err) => {
         console.warn('Failed to update user in Supabase:', err);
       });
 
@@ -2576,7 +2552,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       createdAt: new Date().toISOString(),
     };
 
-    setDepartments((prev) => [...prev, newDept]);
+    setDepartments((prev) => {
+      const nextList = [...prev, newDept];
+      safeSetJson(STORAGE_KEYS.DEPARTMENTS, nextList);
+      return nextList;
+    });
     dbUpsertDepartment(newDept).catch(() => {});
 
     addAuditLog(
@@ -2631,9 +2611,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     const updatedDept = { ...target, ...updates };
-    setDepartments((prev) =>
-      prev.map((d) => (d.id === id ? updatedDept : d))
-    );
+    setDepartments((prev) => {
+      const nextList = prev.map((d) => (d.id === id ? updatedDept : d));
+      safeSetJson(STORAGE_KEYS.DEPARTMENTS, nextList);
+      return nextList;
+    });
     dbUpsertDepartment(updatedDept).catch(() => {});
 
     addAuditLog(
@@ -2664,21 +2646,24 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const remainingDepts = departments.filter((d) => d.id !== id);
     const fallbackDept = remainingDepts[0];
 
-    // Reassign any users belonging to the deleted department
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.department.toLowerCase() === target.name.toLowerCase()
-          ? { ...u, department: fallbackDept.name }
-          : u
-      )
-    );
+    // Reassign any users belonging to the deleted department if remaining
+    if (fallbackDept) {
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.department.toLowerCase() === target.name.toLowerCase()
+            ? { ...u, department: fallbackDept.name }
+            : u
+        )
+      );
+    }
 
     setDepartments(remainingDepts);
+    safeSetJson(STORAGE_KEYS.DEPARTMENTS, remainingDepts);
     dbDeleteDepartment(id).catch(() => {});
 
     addAuditLog(
       'DEPARTMENT_DELETED',
-      `ADMIN ACTION: Removed department "${target.name}". Any existing users were reassigned to "${fallbackDept.name}".`,
+      `ADMIN ACTION: Removed department "${target.name}".`,
       'warning'
     );
     return { success: true };

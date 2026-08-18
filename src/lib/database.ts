@@ -11,6 +11,7 @@ import {
   Department,
   User,
   UserRole,
+  OrgBrandingConfig,
 } from '../types';
 
 // ============================================================================
@@ -179,22 +180,49 @@ export function dbToVendor(row: any): Vendor {
 export function departmentToDb(dept: Department): any {
   return {
     id: dept.id,
-    name: dept.name,
-    code: dept.code || null,
-    description: dept.description || null,
-    head_name: dept.headName || null,
+    department_name: dept.name,
+    acronym_code: dept.code || dept.name.slice(0, 5).toUpperCase(),
+    division_head: dept.headName || null,
+    operational_mandate: dept.description || null,
     created_at: dept.createdAt || new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
 }
 
 export function dbToDepartment(row: any): Department {
   return {
     id: row.id,
-    name: row.name,
-    code: row.code,
-    description: row.description,
-    headName: row.head_name || row.headName,
+    name: row.department_name || row.name || 'Unnamed Division',
+    code: row.acronym_code || row.code || '',
+    description: row.operational_mandate || row.description || '',
+    headName: row.division_head || row.head_name || row.headName || '',
     createdAt: row.created_at || row.createdAt,
+  };
+}
+
+export function systemIdentityToDb(b: OrgBrandingConfig): any {
+  return {
+    id: 'default',
+    short_brand: b.orgName || 'CEBU PDRRMO',
+    badge_tag_label: b.badgeText || 'INVENTORY',
+    full_agency_name: b.fullOfficeName || 'Cebu Provincial Disaster Risk Reduction and Management Office',
+    system_tagline: b.orgSubtitle || 'Provincial Disaster Risk Reduction and Management Office',
+    brand_accent_color: b.badgeBgColor || '#DC2626',
+    logo_url: b.customLogoUrl || null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function dbToSystemIdentity(row: any): OrgBrandingConfig {
+  return {
+    orgName: row.short_brand || row.org_name || 'CEBU PDRRMO',
+    badgeText: row.badge_tag_label || row.badge_text || 'INVENTORY',
+    fullOfficeName: row.full_agency_name || row.full_office_name || 'Cebu Provincial Disaster Risk Reduction and Management Office',
+    orgSubtitle: row.system_tagline || row.org_subtitle || 'Provincial Disaster Risk Reduction and Management Office',
+    badgeBgColor: row.brand_accent_color || row.badge_bg_color || '#DC2626',
+    customLogoUrl: row.logo_url || row.custom_logo_url || '',
+    logoType: (row.logo_url || row.custom_logo_url) ? 'upload' : 'preset',
+    logoPresetId: 'shield-alert',
   };
 }
 
@@ -296,7 +324,7 @@ export function dbToRole(row: any): UserRole {
   };
 }
 
-export function userToDb(u: User, passwordHash?: string): any {
+export function userToDb(u: User, passwordHash?: string, departments: Department[] = []): any {
   let roleId = u.roleId;
   if (
     !roleId ||
@@ -315,13 +343,21 @@ export function userToDb(u: User, passwordHash?: string): any {
         : 'role-staff';
   }
   const generatedQr = u.userQrCode || `USR-QR-${u.id.toUpperCase()}`;
+
+  // Match department_id from departments table
+  const matchedDept = departments.find(
+    (d) => d.id === u.department || d.name.toLowerCase() === (u.department || '').toLowerCase()
+  );
+  const deptId = matchedDept ? matchedDept.id : u.department || null;
+
   return {
     id: u.id,
     name: u.name,
     email: u.email.toLowerCase(),
     password_hash: passwordHash || u.password || 'staff123',
     role_id: roleId || 'role-staff',
-    department: u.department || null,
+    department_id: deptId,
+    department: u.department || (matchedDept ? matchedDept.name : null),
     position: u.roleName || u.position || null,
     contact_number: u.phone || null,
     user_qr_code: generatedQr,
@@ -332,7 +368,7 @@ export function userToDb(u: User, passwordHash?: string): any {
   };
 }
 
-export function dbToUser(row: any, roles: UserRole[] = []): User {
+export function dbToUser(row: any, roles: UserRole[] = [], departments: Department[] = []): User {
   const matchedRole = roles.find(
     (r) => r.id === row.role_id || r.name.toLowerCase() === (row.role_id || '').toLowerCase()
   );
@@ -359,13 +395,19 @@ export function dbToUser(row: any, roles: UserRole[] = []): User {
 
   const userQr = row.user_qr_code || row.userQrCode || `USR-QR-${row.id.toUpperCase()}`;
 
+  // Match department by department_id or department name
+  const matchedDept = departments.find(
+    (d) => d.id === row.department_id || d.id === row.department
+  );
+  const resolvedDept = matchedDept ? matchedDept.name : row.department || '';
+
   return {
     id: row.id,
     name: row.name || row.email?.split('@')[0] || 'Officer',
     email: row.email,
     roleId: row.role_id || (matchedRole ? matchedRole.id : 'role-staff'),
     roleName: roleName,
-    department: row.department || 'Disaster Emergency Response',
+    department: resolvedDept,
     assignedLocationId: row.assigned_location_id || undefined,
     avatarUrl:
       row.avatar_url ||
@@ -468,6 +510,7 @@ export async function fetchAllFromSupabase(): Promise<{
   roles?: UserRole[];
   purchaseOrders?: PurchaseOrder[];
   registrationRequests?: UserRegistrationRequest[];
+  systemIdentity?: OrgBrandingConfig;
 }> {
   const client = getSupabase();
   if (!client) return {};
@@ -484,10 +527,20 @@ export async function fetchAllFromSupabase(): Promise<{
   }
 
   try {
+    const { data: deptData, error: deptErr } = await client.from('departments').select('*');
+    if (!deptErr && deptData) {
+      results.departments = deptData.map(dbToDepartment);
+    }
+  } catch (err) {
+    console.warn('Departments table query skipped:', err);
+  }
+
+  try {
     const { data: usersData, error: usersErr } = await client.from('users').select('*');
     if (!usersErr && usersData) {
       const currentRoles = results.roles || [];
-      results.users = usersData.map((u: any) => dbToUser(u, currentRoles));
+      const currentDepts = results.departments || [];
+      results.users = usersData.map((u: any) => dbToUser(u, currentRoles, currentDepts));
     }
   } catch (err) {
     console.warn('Users table query skipped:', err);
@@ -581,7 +634,34 @@ export async function fetchAllFromSupabase(): Promise<{
     console.warn('Registration requests table query skipped:', err);
   }
 
+  try {
+    const { data: idData, error: idErr } = await client.from('system_identity').select('*').limit(1);
+    if (!idErr && idData && idData.length > 0) {
+      results.systemIdentity = dbToSystemIdentity(idData[0]);
+    }
+  } catch (err) {
+    console.warn('System identity table query skipped:', err);
+  }
+
   return results;
+}
+
+// System Identity CRUD
+export async function dbUpsertSystemIdentity(branding: OrgBrandingConfig) {
+  const client = getSupabase();
+  if (!client) return;
+  try {
+    const payload = systemIdentityToDb(branding);
+    const { error: upsertErr } = await client.from('system_identity').upsert(payload, { onConflict: 'id' });
+    if (!upsertErr) return;
+
+    const { error: updateErr } = await client.from('system_identity').update(payload).eq('id', 'default');
+    if (updateErr) {
+      console.warn('Supabase dbUpsertSystemIdentity notice:', updateErr.message);
+    }
+  } catch (err) {
+    console.warn('Failed to upsert system_identity to Supabase:', err);
+  }
 }
 
 // Item CRUD
@@ -676,8 +756,22 @@ export async function dbUpsertLocation(loc: Location) {
   if (!client) return;
   try {
     const payload = locationToDb(loc);
-    const { error } = await client.from('locations').upsert(payload, { onConflict: 'id' });
-    if (error) console.error('❌ Supabase locations upsert error:', error);
+
+    // 1. Try upsert with onConflict on id
+    const { error: upsertErr } = await client.from('locations').upsert(payload, { onConflict: 'id' });
+    if (!upsertErr) return;
+
+    // 2. Fallback: try update by id
+    const { error: updateErr } = await client.from('locations').update(payload).eq('id', loc.id);
+    if (!updateErr) return;
+
+    // 3. Fallback: try update by unique code
+    if (loc.code) {
+      const { error: codeErr } = await client.from('locations').update(payload).eq('code', loc.code);
+      if (codeErr) {
+        console.warn('Supabase dbUpsertLocation update error:', codeErr.message);
+      }
+    }
   } catch (err) {
     console.warn('Failed to upsert location to Supabase:', err);
   }
@@ -688,7 +782,9 @@ export async function dbDeleteLocation(id: string) {
   if (!client) return;
   try {
     const { error } = await client.from('locations').delete().eq('id', id);
-    if (error) console.error('❌ Supabase locations delete error:', error);
+    if (error) {
+      console.warn('Supabase dbDeleteLocation notice:', error.message);
+    }
   } catch (err) {
     console.warn('Failed to delete location from Supabase:', err);
   }
@@ -724,8 +820,22 @@ export async function dbUpsertDepartment(dept: Department) {
   if (!client) return;
   try {
     const payload = departmentToDb(dept);
-    const { error } = await client.from('departments').upsert(payload, { onConflict: 'id' });
-    if (error) console.error('❌ Supabase departments upsert error:', error);
+
+    // 1. Try upsert with onConflict on id
+    const { error: upsertErr } = await client.from('departments').upsert(payload, { onConflict: 'id' });
+    if (!upsertErr) return;
+
+    // 2. Fallback: try update by id
+    const { error: updateErr } = await client.from('departments').update(payload).eq('id', dept.id);
+    if (!updateErr) return;
+
+    // 3. Fallback: try update by department_name
+    if (payload.department_name) {
+      const { error: nameErr } = await client.from('departments').update(payload).eq('department_name', payload.department_name);
+      if (nameErr) {
+        console.warn('Supabase dbUpsertDepartment update notice:', nameErr.message);
+      }
+    }
   } catch (err) {
     console.warn('Failed to upsert department to Supabase:', err);
   }
@@ -736,7 +846,9 @@ export async function dbDeleteDepartment(id: string) {
   if (!client) return;
   try {
     const { error } = await client.from('departments').delete().eq('id', id);
-    if (error) console.error('❌ Supabase departments delete error:', error);
+    if (error) {
+      console.warn('Supabase dbDeleteDepartment notice:', error.message);
+    }
   } catch (err) {
     console.warn('Failed to delete department from Supabase:', err);
   }
@@ -798,11 +910,11 @@ export async function dbUpsertRole(role: UserRole) {
   }
 }
 
-export async function dbUpsertUser(user: User, passwordHash?: string) {
+export async function dbUpsertUser(user: User, passwordHash?: string, departments: Department[] = []) {
   const client = getSupabase();
   if (!client) return;
   try {
-    const fullPayload = userToDb(user, passwordHash);
+    const fullPayload = userToDb(user, passwordHash, departments);
 
     // 1. Try full upsert with onConflict on id
     const { error: upsertErr } = await client.from('users').upsert(fullPayload, { onConflict: 'id' });
@@ -812,14 +924,14 @@ export async function dbUpsertUser(user: User, passwordHash?: string) {
     const { error: updateErr } = await client.from('users').update(fullPayload).eq('id', user.id);
     if (!updateErr) return;
 
-    // 3. Fallback: try core columns only (if custom columns like pin/user_qr_code trigger schema error)
+    // 3. Fallback: try core columns matching Supabase users table schema
     const corePayload: any = {
       id: user.id,
       name: user.name,
       email: user.email.toLowerCase(),
       password_hash: passwordHash || user.password || 'staff123',
       role_id: fullPayload.role_id,
-      department: user.department || null,
+      department_id: fullPayload.department_id,
       assigned_location_id: user.assignedLocationId || null,
       avatar_url: user.avatarUrl || null,
     };

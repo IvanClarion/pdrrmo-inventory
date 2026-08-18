@@ -337,37 +337,99 @@ export async function uploadUserProfilePhotoToSupabase(
   const client = getSupabase();
   if (!client) throw new Error('Supabase client is not configured.');
 
-  // Automatically compress avatar (max 600x600, WebP 85% quality)
-  const { blob, format, extension } = await compressImage(file, {
-    maxWidth: 600,
-    maxHeight: 600,
-    quality: 0.85,
-    format: 'image/webp',
-  });
-
   const cleanName = (userNameHint || 'user')
     .replace(/[^a-zA-Z0-9_-]/g, '_')
     .substring(0, 30);
-  const filePath = `avatars/${Date.now()}_${cleanName}.${extension}`;
+  const timestamp = Date.now();
 
-  const { error } = await client.storage
-    .from('user_profile')
-    .upload(filePath, blob, {
-      cacheControl: '31536000', // 1 year cache
-      upsert: true,
-      contentType: format,
+  // Tier 1: WebP compression (max 600x600)
+  try {
+    const { blob, format, extension } = await compressImage(file, {
+      maxWidth: 600,
+      maxHeight: 600,
+      quality: 0.85,
+      format: 'image/webp',
     });
 
-  if (error) {
-    console.error('❌ Supabase storage user_profile upload error:', error);
-    throw error;
+    // Try in avatars/ folder
+    const filePath = `avatars/${timestamp}_${cleanName}.${extension}`;
+    const { error: err1 } = await client.storage
+      .from('user_profile')
+      .upload(filePath, blob, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: format,
+      });
+
+    if (!err1) {
+      const { data } = client.storage.from('user_profile').getPublicUrl(filePath);
+      if (data?.publicUrl) return data.publicUrl;
+    }
+
+    // Try in root of user_profile bucket
+    const rootPath = `${timestamp}_${cleanName}.${extension}`;
+    const { error: err2 } = await client.storage
+      .from('user_profile')
+      .upload(rootPath, blob, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: format,
+      });
+
+    if (!err2) {
+      const { data } = client.storage.from('user_profile').getPublicUrl(rootPath);
+      if (data?.publicUrl) return data.publicUrl;
+    }
+  } catch (compErr) {
+    console.warn('WebP avatar compression notice:', compErr);
   }
 
-  const { data: publicUrlData } = client.storage
-    .from('user_profile')
-    .getPublicUrl(filePath);
+  // Tier 2: PNG compression (max 600x600)
+  try {
+    const { blob, format, extension } = await compressImage(file, {
+      maxWidth: 600,
+      maxHeight: 600,
+      quality: 0.85,
+      format: 'image/png',
+    });
 
-  return publicUrlData.publicUrl;
+    const rootPath = `${timestamp}_${cleanName}.${extension}`;
+    const { error: errPng } = await client.storage
+      .from('user_profile')
+      .upload(rootPath, blob, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: format,
+      });
+
+    if (!errPng) {
+      const { data } = client.storage.from('user_profile').getPublicUrl(rootPath);
+      if (data?.publicUrl) return data.publicUrl;
+    }
+  } catch (pngErr) {
+    console.warn('PNG avatar compression notice:', pngErr);
+  }
+
+  // Tier 3: Direct raw file upload
+  const rawExt = file instanceof File && file.name.includes('.') ? file.name.split('.').pop() : 'png';
+  const rawPath = `${timestamp}_${cleanName}.${rawExt}`;
+  const { error: rawErr } = await client.storage
+    .from('user_profile')
+    .upload(rawPath, file, {
+      cacheControl: '3600',
+      upsert: true,
+    });
+
+  if (rawErr) {
+    console.error('❌ Supabase storage user_profile upload error:', rawErr);
+    throw new Error(rawErr.message || 'Avatar upload failed');
+  }
+
+  const { data: rawPublicData } = client.storage
+    .from('user_profile')
+    .getPublicUrl(rawPath);
+
+  return rawPublicData.publicUrl;
 }
 
 /**
@@ -382,37 +444,99 @@ export async function uploadLogoToSupabase(
   const client = getSupabase();
   if (!client) throw new Error('Supabase client is not configured.');
 
-  // Compress logo (max 512x512, WebP 90% quality for crisp branding)
-  const { blob, format, extension } = await compressImage(file, {
-    maxWidth: 512,
-    maxHeight: 512,
-    quality: 0.9,
-    format: 'image/webp',
-  });
-
   const cleanName = (nameHint || 'org_logo')
     .replace(/[^a-zA-Z0-9_-]/g, '_')
     .substring(0, 30);
-  const filePath = `branding/${Date.now()}_${cleanName}.${extension}`;
+  const timestamp = Date.now();
 
-  const { error } = await client.storage
-    .from('logo')
-    .upload(filePath, blob, {
-      cacheControl: '31536000', // 1 year cache
-      upsert: true,
-      contentType: format,
+  // Tier 1: Compress as WebP (max 512x512)
+  try {
+    const { blob, format, extension } = await compressImage(file, {
+      maxWidth: 512,
+      maxHeight: 512,
+      quality: 0.9,
+      format: 'image/webp',
     });
 
-  if (error) {
-    console.error('❌ Supabase storage logo upload error:', error);
-    throw error;
+    // Try path in branding/
+    const filePath = `branding/${timestamp}_${cleanName}.${extension}`;
+    const { error: err1 } = await client.storage
+      .from('logo')
+      .upload(filePath, blob, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: format,
+      });
+
+    if (!err1) {
+      const { data } = client.storage.from('logo').getPublicUrl(filePath);
+      if (data?.publicUrl) return data.publicUrl;
+    }
+
+    // Try path in root of 'logo' bucket
+    const rootPath = `${timestamp}_${cleanName}.${extension}`;
+    const { error: err2 } = await client.storage
+      .from('logo')
+      .upload(rootPath, blob, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: format,
+      });
+
+    if (!err2) {
+      const { data } = client.storage.from('logo').getPublicUrl(rootPath);
+      if (data?.publicUrl) return data.publicUrl;
+    }
+  } catch (compErr) {
+    console.warn('WebP logo upload attempt notice:', compErr);
   }
 
-  const { data: publicUrlData } = client.storage
-    .from('logo')
-    .getPublicUrl(filePath);
+  // Tier 2: Compress as PNG (max 512x512)
+  try {
+    const { blob, format, extension } = await compressImage(file, {
+      maxWidth: 512,
+      maxHeight: 512,
+      quality: 0.9,
+      format: 'image/png',
+    });
 
-  return publicUrlData.publicUrl;
+    const rootPath = `${timestamp}_${cleanName}.${extension}`;
+    const { error: errPng } = await client.storage
+      .from('logo')
+      .upload(rootPath, blob, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: format,
+      });
+
+    if (!errPng) {
+      const { data } = client.storage.from('logo').getPublicUrl(rootPath);
+      if (data?.publicUrl) return data.publicUrl;
+    }
+  } catch (pngErr) {
+    console.warn('PNG logo upload attempt notice:', pngErr);
+  }
+
+  // Tier 3: Direct raw file upload
+  const rawExt = file instanceof File && file.name.includes('.') ? file.name.split('.').pop() : 'png';
+  const rawPath = `${timestamp}_${cleanName}.${rawExt}`;
+  const { error: rawErr } = await client.storage
+    .from('logo')
+    .upload(rawPath, file, {
+      cacheControl: '3600',
+      upsert: true,
+    });
+
+  if (rawErr) {
+    console.error('❌ Supabase storage logo raw upload error:', rawErr);
+    throw new Error(rawErr.message || 'Storage bucket upload rejected');
+  }
+
+  const { data: rawPublicData } = client.storage
+    .from('logo')
+    .getPublicUrl(rawPath);
+
+  return rawPublicData.publicUrl;
 }
 
 /**
@@ -424,26 +548,45 @@ export async function fetchLatestLogoFromSupabase(): Promise<string | null> {
   if (!client) return null;
 
   try {
-    const { data, error } = await client.storage
+    // 1. Try listing in 'branding' folder
+    const { data: brandingData } = await client.storage
       .from('logo')
       .list('branding', {
         limit: 10,
         sortBy: { column: 'created_at', order: 'desc' },
       });
 
-    if (error || !data || data.length === 0) return null;
-
-    // Find the first actual file (skip folders / .emptyFolderPlaceholder)
-    const latestFile = data.find(
+    const brandingFile = brandingData?.find(
       (f) => f.name && !f.name.startsWith('.') && f.id
     );
-    if (!latestFile) return null;
 
-    const { data: publicUrlData } = client.storage
+    if (brandingFile) {
+      const { data: publicUrlData } = client.storage
+        .from('logo')
+        .getPublicUrl(`branding/${brandingFile.name}`);
+      if (publicUrlData?.publicUrl) return publicUrlData.publicUrl;
+    }
+
+    // 2. Try listing in root of 'logo' bucket
+    const { data: rootData } = await client.storage
       .from('logo')
-      .getPublicUrl(`branding/${latestFile.name}`);
+      .list('', {
+        limit: 10,
+        sortBy: { column: 'created_at', order: 'desc' },
+      });
 
-    return publicUrlData.publicUrl || null;
+    const rootFile = rootData?.find(
+      (f) => f.name && !f.name.startsWith('.') && f.id
+    );
+
+    if (rootFile) {
+      const { data: rootUrlData } = client.storage
+        .from('logo')
+        .getPublicUrl(rootFile.name);
+      return rootUrlData?.publicUrl || null;
+    }
+
+    return null;
   } catch (err) {
     console.warn('Failed to fetch logo from Supabase storage:', err);
     return null;

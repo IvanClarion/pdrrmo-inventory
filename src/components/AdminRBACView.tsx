@@ -47,7 +47,6 @@ export const AdminRBACView: React.FC = () => {
     addDepartment,
     editDepartment,
     deleteDepartment,
-    resetDepartmentsToDefault,
     updateRolePermissions,
     resetRolePermissionsToDefault,
     hasPermission,
@@ -70,13 +69,9 @@ export const AdminRBACView: React.FC = () => {
   // Selected User for QR Badge Modal
   const [selectedUserForQr, setSelectedUserForQr] = useState<User | null>(null);
 
-  // Merge database roles with DEFAULT_ROLES to guarantee all 4 standard roles exist
+  // Use database roles directly (or DEFAULT_ROLES only as offline fallback)
   const standardOrder = ['Staff', 'Inventory Manager', 'Auditor', 'Admin'];
-  const roleMap = new Map<string, UserRole>();
-  DEFAULT_ROLES.forEach((dr) => roleMap.set(dr.name.toLowerCase(), dr));
-  roles.forEach((r) => roleMap.set(r.name.toLowerCase(), r));
-
-  const availableRoles = Array.from(roleMap.values()).sort((a, b) => {
+  const availableRoles = (roles.length > 0 ? roles : DEFAULT_ROLES).slice().sort((a, b) => {
     const idxA = standardOrder.indexOf(a.name);
     const idxB = standardOrder.indexOf(b.name);
     if (idxA !== -1 && idxB !== -1) return idxA - idxB;
@@ -238,7 +233,7 @@ export const AdminRBACView: React.FC = () => {
       name: '',
       email: '',
       roleId: defaultStaffRole?.id || 'role-staff',
-      department: departments[0]?.name || 'Disaster Emergency Response',
+      department: departments[0]?.name || '',
       assignedLocationId: locations[0]?.id || '',
       avatarUrl: '',
       userQrCode: `USR-QR-${Math.floor(10000 + Math.random() * 90000)}`,
@@ -259,7 +254,7 @@ export const AdminRBACView: React.FC = () => {
       name: u.name || '',
       email: u.email || '',
       roleId: effectiveRoleId,
-      department: u.department || departments[0]?.name || 'Disaster Emergency Response',
+      department: u.department || departments[0]?.name || '',
       assignedLocationId: u.assignedLocationId || '',
       avatarUrl: u.avatarUrl || '',
       userQrCode: u.userQrCode || `USR-QR-${u.id.toUpperCase()}`,
@@ -312,12 +307,12 @@ export const AdminRBACView: React.FC = () => {
   // Location Actions
   const handleCreateLocation = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newLocName || !newLocCode) return;
+    if (!newLocName.trim() || !newLocCode.trim()) return;
     addLocation({
-      name: newLocName,
-      code: newLocCode,
+      name: newLocName.trim(),
+      code: newLocCode.trim().toUpperCase(),
       type: newLocType,
-      capacity: newLocCapacity,
+      capacity: Number(newLocCapacity || 1000),
     });
     setNewLocName('');
     setNewLocCode('');
@@ -327,9 +322,9 @@ export const AdminRBACView: React.FC = () => {
   const handleOpenEditLocation = (loc: Location) => {
     setEditingLocation(loc);
     setLocationForm({
-      name: loc.name,
-      code: loc.code,
-      type: loc.type,
+      name: loc.name || '',
+      code: loc.code || '',
+      type: loc.type || 'Warehouse',
       parentLocationId: loc.parentLocationId || '',
       capacity: loc.capacity || 1000,
     });
@@ -338,13 +333,13 @@ export const AdminRBACView: React.FC = () => {
 
   const handleSaveLocation = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingLocation) return;
+    if (!editingLocation || !locationForm.name.trim() || !locationForm.code.trim()) return;
     editLocation(editingLocation.id, {
-      name: locationForm.name,
-      code: locationForm.code,
+      name: locationForm.name.trim(),
+      code: locationForm.code.trim().toUpperCase(),
       type: locationForm.type,
       parentLocationId: locationForm.parentLocationId || undefined,
-      capacity: locationForm.capacity,
+      capacity: Number(locationForm.capacity || 1000),
     });
     setLocationModalOpen(false);
   };
@@ -579,123 +574,139 @@ export const AdminRBACView: React.FC = () => {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {filteredUsers.map((u) => {
-              const assignedLoc = locations.find((l) => l.id === u.assignedLocationId);
-              return (
-                <div
-                  key={u.id}
-                  className="bg-white border border-[#E5E5E5] rounded-2xl p-4 shadow-sm hover:shadow-md transition space-y-3 flex flex-col justify-between"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={
-                            u.avatarUrl ||
-                            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
-                          }
-                          alt={u.name}
-                          className="w-11 h-11 rounded-full object-cover border-2 border-black shrink-0"
-                        />
-                        <div>
-                          <h4 className="font-bold text-[#1A1A1A] text-sm leading-tight">{u.name}</h4>
-                          <span className="text-[10px] text-gray-500 font-medium block truncate max-w-[130px]">{u.email}</span>
+          {users.length === 0 ? (
+            <div className="bg-white border-2 border-dashed border-gray-200 rounded-2xl p-12 text-center text-gray-400 text-xs">
+              <Users className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+              <h4 className="text-sm font-bold text-gray-700">No Users in Database</h4>
+              <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
+                Create your first staff or administrative account using the &quot;Add New User Account&quot; button above.
+              </p>
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="bg-white border border-[#E5E5E5] rounded-2xl p-8 text-center text-gray-400 text-xs">
+              No users found matching &quot;{userSearchTerm}&quot;.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {filteredUsers.map((u) => {
+                const assignedLoc = locations.find((l) => l.id === u.assignedLocationId);
+                return (
+                  <div
+                    key={u.id}
+                    className="bg-white border border-[#E5E5E5] rounded-2xl p-4 shadow-sm hover:shadow-md transition space-y-3 flex flex-col justify-between"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={
+                              u.avatarUrl ||
+                              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
+                            }
+                            alt={u.name}
+                            className="w-11 h-11 rounded-full object-cover border-2 border-black shrink-0"
+                          />
+                          <div>
+                            <h4 className="font-bold text-[#1A1A1A] text-sm leading-tight">{u.name}</h4>
+                            <span className="text-[10px] text-gray-500 font-medium block truncate max-w-[130px]">{u.email}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        {/* Role & Dept badge */}
+                        <div className="p-2.5 rounded-xl bg-[#F9F9F9] border border-[#E5E5E5] text-xs flex justify-between items-center">
+                          <div>
+                            <span className="text-[9px] text-gray-400 font-bold uppercase block">Assigned Role</span>
+                            <span className="font-bold text-black text-xs">{u.roleName}</span>
+                          </div>
+                          {u.department && (
+                            <span className="px-2 py-0.5 rounded bg-black text-white text-[10px] font-bold truncate max-w-[110px]">
+                              {u.department}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Storage Mapping & User QR Badge */}
+                        <div className="p-2.5 rounded-xl bg-[#F9F9F9] border border-[#E5E5E5] text-xs space-y-1">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-gray-500 font-medium flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-gray-400" />
+                              Facility:
+                            </span>
+                            <span className="font-bold text-[#1A1A1A] truncate max-w-[120px]">
+                              {assignedLoc ? assignedLoc.name : 'All Warehouses'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-[#E5E5E5]">
+                            <span className="text-gray-500 font-medium flex items-center gap-1">
+                              <QrCode className="w-3 h-3 text-gray-400" />
+                              QR Badge:
+                            </span>
+                            <span className="font-mono text-[10px] font-bold text-black bg-white px-1.5 py-0.5 rounded border border-[#E5E5E5]">
+                              {u.userQrCode || `USR-QR-${u.id.toUpperCase()}`}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      {/* Role & Dept badge */}
-                      <div className="p-2.5 rounded-xl bg-[#F9F9F9] border border-[#E5E5E5] text-xs flex justify-between items-center">
-                        <div>
-                          <span className="text-[9px] text-gray-400 font-bold uppercase block">Assigned Role</span>
-                          <span className="font-bold text-black text-xs">{u.roleName}</span>
+                    {/* Actions */}
+                    <div className="pt-2 border-t border-[#E5E5E5] flex items-center gap-1.5">
+                      {deletingUserId === u.id ? (
+                        <div className="flex-1 flex items-center justify-between bg-red-50 px-2 py-1 rounded-lg border border-red-200">
+                          <span className="text-[11px] font-bold text-red-700">Delete user?</span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => {
+                                deleteUser(u.id);
+                                setDeletingUserId(null);
+                              }}
+                              className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold transition"
+                            >
+                              Yes
+                            </button>
+                            <button
+                              onClick={() => setDeletingUserId(null)}
+                              className="px-2 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-[10px] font-bold transition"
+                            >
+                              No
+                            </button>
+                          </div>
                         </div>
-                        <span className="px-2 py-0.5 rounded bg-black text-white text-[10px] font-bold">
-                          {u.department}
-                        </span>
-                      </div>
-
-                      {/* Storage Mapping & User QR Badge */}
-                      <div className="p-2.5 rounded-xl bg-[#F9F9F9] border border-[#E5E5E5] text-xs space-y-1">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-gray-500 font-medium flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-gray-400" />
-                            Facility:
-                          </span>
-                          <span className="font-bold text-[#1A1A1A] truncate max-w-[120px]">
-                            {assignedLoc ? assignedLoc.name : 'All Warehouses'}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] pt-1 border-t border-[#E5E5E5]">
-                          <span className="text-gray-500 font-medium flex items-center gap-1">
-                            <QrCode className="w-3 h-3 text-gray-400" />
-                            QR Badge:
-                          </span>
-                          <span className="font-mono text-[10px] font-bold text-black bg-white px-1.5 py-0.5 rounded border border-[#E5E5E5]">
-                            {u.userQrCode || `USR-QR-${u.id.toUpperCase()}`}
-                          </span>
-                        </div>
-                      </div>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setSelectedUserForQr(u)}
+                            className="flex-1 py-1.5 px-2 bg-[#F5F5F5] hover:bg-[#EAEAEA] border border-[#E5E5E5] rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition"
+                            title="View QR ID Badge"
+                          >
+                            <QrCode className="w-3.5 h-3.5 text-black" />
+                            <span>Badge</span>
+                          </button>
+                          <button
+                            onClick={() => handleOpenEditUser(u)}
+                            className="py-1.5 px-2.5 bg-black hover:bg-neutral-800 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition"
+                            title="Edit Assigned Role & Account"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            onClick={() => setDeletingUserId(u.id)}
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-200 transition"
+                            title="Delete User"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
-
-                  {/* Actions */}
-                  <div className="pt-2 border-t border-[#E5E5E5] flex items-center gap-1.5">
-                    {deletingUserId === u.id ? (
-                      <div className="flex-1 flex items-center justify-between bg-red-50 px-2 py-1 rounded-lg border border-red-200">
-                        <span className="text-[11px] font-bold text-red-700">Delete user?</span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => {
-                              deleteUser(u.id);
-                              setDeletingUserId(null);
-                            }}
-                            className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold"
-                          >
-                            Confirm
-                          </button>
-                          <button
-                            onClick={() => setDeletingUserId(null)}
-                            className="px-2 py-0.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-[10px] font-bold"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => setSelectedUserForQr(u)}
-                          className="flex-1 py-1.5 bg-[#F5F5F5] hover:bg-[#EAEAEA] text-[#1A1A1A] rounded-lg text-xs font-bold border border-[#E5E5E5] flex items-center justify-center gap-1 transition"
-                          title="View & Print QR ID Badge"
-                        >
-                          <QrCode className="w-3.5 h-3.5" />
-                          <span>QR Badge</span>
-                        </button>
-                        <button
-                          onClick={() => handleOpenEditUser(u)}
-                          className="py-1.5 px-2.5 bg-black hover:bg-neutral-800 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition"
-                          title="Edit Assigned Role & Account"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                          <span>Edit</span>
-                        </button>
-                        <button
-                          onClick={() => setDeletingUserId(u.id)}
-                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-200 transition"
-                          title="Delete User"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       ) : activeSubTab === 'departments' ? (
         /* Departments & Divisions Management Tab */
@@ -714,19 +725,6 @@ export const AdminRBACView: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm('Reset departments list to standard Cebu PDRRMO official divisions? Custom added divisions will be replaced.')) {
-                    resetDepartmentsToDefault();
-                  }
-                }}
-                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
-                title="Reset to official PDRRMO department defaults"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Reset Defaults</span>
-              </button>
               <button
                 type="button"
                 onClick={handleOpenCreateDept}
@@ -904,11 +902,19 @@ export const AdminRBACView: React.FC = () => {
                 })}
               </div>
 
-              {filteredDepartments.length === 0 && (
+              {departments.length === 0 ? (
+                <div className="bg-white border-2 border-dashed border-gray-200 rounded-2xl p-12 text-center text-gray-400 text-xs">
+                  <Building className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                  <h4 className="text-sm font-bold text-gray-700">No Departments in Database</h4>
+                  <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
+                    Add your official disaster response divisions or operational units using the form on the left.
+                  </p>
+                </div>
+              ) : filteredDepartments.length === 0 ? (
                 <div className="bg-white border border-[#E5E5E5] rounded-2xl p-8 text-center text-gray-400 text-xs">
                   No departments found matching &quot;{deptSearchTerm}&quot;.
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
@@ -996,76 +1002,91 @@ export const AdminRBACView: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {locations.map((loc) => {
-                const mappedItemsCount = items.filter((i) => i.locationId === loc.id).length;
-                return (
-                  <div
-                    key={loc.id}
-                    className="p-3.5 rounded-2xl bg-[#F9F9F9] border border-[#E5E5E5] text-xs space-y-2 flex flex-col justify-between"
-                  >
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between items-start gap-2">
-                        <h4 className="font-bold text-[#1A1A1A] leading-tight">{loc.name}</h4>
-                        <span className="px-2 py-0.5 rounded bg-black text-white text-[10px] font-bold shrink-0">
-                          {loc.type}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-[11px] text-gray-500 font-mono">
-                        <span>Code: {loc.code}</span>
-                        <span className="text-gray-700 font-sans font-medium flex items-center gap-1">
-                          <Boxes className="w-3 h-3 text-gray-400" />
-                          {mappedItemsCount} Items Stored
-                        </span>
-                      </div>
-                      {loc.capacity && (
-                        <div className="text-[10px] text-gray-400">Capacity: {loc.capacity} units</div>
-                      )}
-                    </div>
+            {locations.length === 0 ? (
+              <div className="text-center py-12 px-4 border-2 border-dashed border-gray-200 rounded-2xl bg-[#FAFAFA]">
+                <MapPin className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                <h4 className="text-sm font-bold text-gray-700">No Storage Locations in Database</h4>
+                <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
+                  Add your first warehouse, aisle, or storage bin using the form on the left.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {locations.map((loc) => {
+                  const mappedItems = items.filter(
+                    (i) => i.locationId === loc.id || (i.locationName && i.locationName.toLowerCase() === loc.name.toLowerCase())
+                  );
+                  const mappedItemsCount = mappedItems.length;
+                  const mappedUnitsCount = mappedItems.reduce((acc, curr) => acc + Number(curr.quantity || 0), 0);
 
-                    <div className="pt-2 border-t border-[#E5E5E5] flex items-center justify-end gap-1.5">
-                      {deletingLocId === loc.id ? (
-                        <div className="flex items-center gap-1.5 bg-red-50 px-2 py-1 rounded-lg border border-red-200">
-                          <span className="text-[11px] font-bold text-red-700">Delete location?</span>
-                          <button
-                            onClick={() => {
-                              deleteLocation(loc.id);
-                              setDeletingLocId(null);
-                            }}
-                            className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold"
-                          >
-                            Confirm
-                          </button>
-                          <button
-                            onClick={() => setDeletingLocId(null)}
-                            className="px-2 py-0.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-[10px] font-bold"
-                          >
-                            Cancel
-                          </button>
+                  return (
+                    <div
+                      key={loc.id}
+                      className="p-3.5 rounded-2xl bg-[#F9F9F9] border border-[#E5E5E5] text-xs space-y-2 flex flex-col justify-between"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-start gap-2">
+                          <h4 className="font-bold text-[#1A1A1A] leading-tight">{loc.name}</h4>
+                          <span className="px-2 py-0.5 rounded bg-black text-white text-[10px] font-bold shrink-0">
+                            {loc.type}
+                          </span>
                         </div>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => handleOpenEditLocation(loc)}
-                            className="px-2.5 py-1 bg-white hover:bg-gray-100 text-[#1A1A1A] border border-[#E5E5E5] rounded-lg text-xs font-bold flex items-center gap-1 transition"
-                          >
-                            <Edit2 className="w-3 h-3 text-black" />
-                            <span>Edit Mapping</span>
-                          </button>
-                          <button
-                            onClick={() => setDeletingLocId(loc.id)}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded-lg transition"
-                            title="Delete Location"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      )}
+                        <div className="flex items-center justify-between text-[11px] text-gray-500 font-mono">
+                          <span>Code: {loc.code}</span>
+                          <span className="text-gray-700 font-sans font-medium flex items-center gap-1" title={`${mappedUnitsCount} total units stored`}>
+                            <Boxes className="w-3 h-3 text-gray-400" />
+                            {mappedItemsCount} Items ({mappedUnitsCount} Units)
+                          </span>
+                        </div>
+                        {loc.capacity && (
+                          <div className="text-[10px] text-gray-400">Capacity: {loc.capacity} units</div>
+                        )}
+                      </div>
+
+                      <div className="pt-2 border-t border-[#E5E5E5] flex items-center justify-end gap-1.5">
+                        {deletingLocId === loc.id ? (
+                          <div className="flex items-center gap-1.5 bg-red-50 px-2 py-1 rounded-lg border border-red-200">
+                            <span className="text-[11px] font-bold text-red-700">Delete location?</span>
+                            <button
+                              onClick={() => {
+                                deleteLocation(loc.id);
+                                setDeletingLocId(null);
+                              }}
+                              className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold"
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              onClick={() => setDeletingLocId(null)}
+                              className="px-2 py-0.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-[10px] font-bold"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleOpenEditLocation(loc)}
+                              className="px-2.5 py-1 bg-white hover:bg-gray-100 text-[#1A1A1A] border border-[#E5E5E5] rounded-lg text-xs font-bold flex items-center gap-1 transition"
+                            >
+                              <Edit2 className="w-3 h-3 text-black" />
+                              <span>Edit Mapping</span>
+                            </button>
+                            <button
+                              onClick={() => setDeletingLocId(loc.id)}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded-lg transition"
+                              title="Delete Location"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       ) : activeSubTab === 'rbac' ? (
@@ -1109,10 +1130,7 @@ export const AdminRBACView: React.FC = () => {
             {/* Role Summary Badges */}
             {(() => {
               const standardOrder = ['Admin', 'Inventory Manager', 'Staff', 'Auditor'];
-              const roleMap = new Map<string, UserRole>();
-              DEFAULT_ROLES.forEach((dr) => roleMap.set(dr.name, dr));
-              roles.forEach((r) => roleMap.set(r.name, r));
-              const matrixRoles = Array.from(roleMap.values()).sort((a, b) => {
+              const matrixRoles = (roles.length > 0 ? roles : DEFAULT_ROLES).slice().sort((a, b) => {
                 const idxA = standardOrder.indexOf(a.name);
                 const idxB = standardOrder.indexOf(b.name);
                 if (idxA !== -1 && idxB !== -1) return idxA - idxB;
@@ -1295,6 +1313,9 @@ export const AdminRBACView: React.FC = () => {
                     onChange={(e) => setUserForm({ ...userForm, department: e.target.value })}
                     className="w-full px-3 py-2 bg-[#F5F5F5] border border-[#E5E5E5] rounded-xl text-xs font-bold text-black focus:outline-none focus:border-black"
                   >
+                    {departments.length === 0 && !userForm.department && (
+                      <option value="">No departments created yet (Add in Departments tab)</option>
+                    )}
                     {departments.map((dept) => (
                       <option key={dept.id} value={dept.name}>
                         {dept.name} {dept.code ? `(${dept.code})` : ''}
