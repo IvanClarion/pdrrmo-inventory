@@ -370,4 +370,121 @@ export async function uploadUserProfilePhotoToSupabase(
   return publicUrlData.publicUrl;
 }
 
+/**
+ * Upload an organization logo to Supabase Storage Bucket 'logo'.
+ * Automatically compresses to max 512x512 WebP.
+ * Returns the public URL of the uploaded logo.
+ */
+export async function uploadLogoToSupabase(
+  file: File | Blob,
+  nameHint?: string
+): Promise<string> {
+  const client = getSupabase();
+  if (!client) throw new Error('Supabase client is not configured.');
+
+  // Compress logo (max 512x512, WebP 90% quality for crisp branding)
+  const { blob, format, extension } = await compressImage(file, {
+    maxWidth: 512,
+    maxHeight: 512,
+    quality: 0.9,
+    format: 'image/webp',
+  });
+
+  const cleanName = (nameHint || 'org_logo')
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .substring(0, 30);
+  const filePath = `branding/${Date.now()}_${cleanName}.${extension}`;
+
+  const { error } = await client.storage
+    .from('logo')
+    .upload(filePath, blob, {
+      cacheControl: '31536000', // 1 year cache
+      upsert: true,
+      contentType: format,
+    });
+
+  if (error) {
+    console.error('❌ Supabase storage logo upload error:', error);
+    throw error;
+  }
+
+  const { data: publicUrlData } = client.storage
+    .from('logo')
+    .getPublicUrl(filePath);
+
+  return publicUrlData.publicUrl;
+}
+
+/**
+ * Fetch the latest uploaded logo URL from Supabase Storage Bucket 'logo'.
+ * Returns the public URL of the most recently uploaded branding logo, or null if none exists.
+ */
+export async function fetchLatestLogoFromSupabase(): Promise<string | null> {
+  const client = getSupabase();
+  if (!client) return null;
+
+  try {
+    const { data, error } = await client.storage
+      .from('logo')
+      .list('branding', {
+        limit: 10,
+        sortBy: { column: 'created_at', order: 'desc' },
+      });
+
+    if (error || !data || data.length === 0) return null;
+
+    // Find the first actual file (skip folders / .emptyFolderPlaceholder)
+    const latestFile = data.find(
+      (f) => f.name && !f.name.startsWith('.') && f.id
+    );
+    if (!latestFile) return null;
+
+    const { data: publicUrlData } = client.storage
+      .from('logo')
+      .getPublicUrl(`branding/${latestFile.name}`);
+
+    return publicUrlData.publicUrl || null;
+  } catch (err) {
+    console.warn('Failed to fetch logo from Supabase storage:', err);
+    return null;
+  }
+}
+
+/**
+ * Register a new user in Supabase Auth so they can log in with signInWithPassword.
+ * If the user already exists, silently ignores the duplicate error.
+ */
+export async function registerSupabaseAuthUser(
+  email: string,
+  password: string
+): Promise<{ success: boolean; error?: string }> {
+  const client = getSupabase();
+  if (!client) return { success: false, error: 'Supabase not configured.' };
+
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanPass = password.trim() || 'staff123';
+
+  try {
+    const { data, error } = await client.auth.signUp({
+      email: cleanEmail,
+      password: cleanPass,
+    });
+
+    if (error) {
+      // "User already registered" is not a real error for our purposes
+      if (error.message?.toLowerCase().includes('already registered') ||
+          error.message?.toLowerCase().includes('already exists')) {
+        return { success: true };
+      }
+      console.warn('Supabase Auth signUp warning:', error.message);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.warn('registerSupabaseAuthUser error:', err);
+    return { success: false, error: err?.message || 'Unknown error' };
+  }
+}
+
 export type { SupabaseUser, Session };

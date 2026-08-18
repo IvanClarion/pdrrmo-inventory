@@ -49,6 +49,8 @@ import {
   syncUserProfile,
   ensureSupabaseAuthSession,
   isSupabaseConfigured,
+  fetchLatestLogoFromSupabase,
+  registerSupabaseAuthUser,
 } from '../lib/supabase';
 import {
   fetchAllFromSupabase,
@@ -667,6 +669,28 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     safeSetJson(STORAGE_KEYS.BRANDING, branding);
   }, [branding]);
 
+  // Fetch latest logo from Supabase 'logo' bucket on boot
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    // Only fetch if no custom logo is set, or if it's a Base64 data URL (not cloud-persisted)
+    const currentLogo = branding.customLogoUrl || '';
+    const isBase64 = currentLogo.startsWith('data:');
+    const hasNoLogo = !currentLogo || branding.logoType === 'preset';
+
+    if (hasNoLogo || isBase64) {
+      fetchLatestLogoFromSupabase().then((cloudLogoUrl) => {
+        if (cloudLogoUrl) {
+          setBranding((prev) => ({
+            ...prev,
+            logoType: 'upload',
+            customLogoUrl: cloudLogoUrl,
+          }));
+        }
+      }).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     safeSetJson(STORAGE_KEYS.CATEGORIES, categories);
   }, [categories]);
@@ -884,7 +908,61 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           DEFAULT_ROLES.forEach((r) => dbUpsertRole(r).catch(() => {}));
         }
         if (data.users !== undefined && data.users.length > 0) {
-          setUsers(data.users);
+          // Merge database users with locally saved users so edits and custom columns persist cleanly
+          setUsers((prevUsers) => {
+            const savedLocalRaw = localStorage.getItem(STORAGE_KEYS.USERS);
+            let localUsersList = prevUsers;
+            if (savedLocalRaw) {
+              try {
+                localUsersList = JSON.parse(savedLocalRaw);
+              } catch {}
+            }
+
+            const dbUsersMap = new Map<string, User>();
+            data.users!.forEach((dbU) => {
+              dbUsersMap.set(String(dbU.id).toLowerCase(), dbU);
+              dbUsersMap.set(String(dbU.email).toLowerCase(), dbU);
+            });
+
+            const merged = localUsersList.map((localU) => {
+              const matchedDb =
+                dbUsersMap.get(String(localU.id).toLowerCase()) ||
+                dbUsersMap.get(String(localU.email).toLowerCase());
+
+              if (!matchedDb) return localU;
+
+              return {
+                ...matchedDb,
+                ...localU,
+                // Ensure integrity of role, name, department, credentials
+                name: localU.name || matchedDb.name,
+                email: localU.email || matchedDb.email,
+                roleName: localU.roleName || matchedDb.roleName,
+                roleId: localU.roleId || matchedDb.roleId,
+                department: localU.department || matchedDb.department,
+                userQrCode: localU.userQrCode || matchedDb.userQrCode,
+                password: localU.password || matchedDb.password,
+                pin: localU.pin || matchedDb.pin,
+                avatarUrl: localU.avatarUrl || matchedDb.avatarUrl,
+              };
+            });
+
+            // Append any users from database that aren't in local storage yet
+            data.users!.forEach((dbU) => {
+              const exists = merged.some(
+                (m) =>
+                  String(m.id).toLowerCase() === String(dbU.id).toLowerCase() ||
+                  String(m.email).toLowerCase() === String(dbU.email).toLowerCase()
+              );
+              if (!exists) {
+                merged.push(dbU);
+              }
+            });
+
+            safeSetJson(STORAGE_KEYS.USERS, merged);
+            return merged;
+          });
+
           const savedAuthId = localStorage.getItem(STORAGE_KEYS.AUTH_USER_ID);
           const active = data.users.find(
             (u) => u.id === savedAuthId || u.email.toLowerCase() === 'admin@example.com'
@@ -2175,46 +2253,108 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const addUser = (userData: Omit<User, 'id'>): User => {
     const targetRole = roles.find((r) => r.id === userData.roleId);
     const newUserId = `usr-${Date.now()}`;
+    const effectivePassword = userData.password ||
+      (targetRole?.name === 'Admin' ? 'admin123' :
+       targetRole?.name === 'Inventory Manager' ? 'manager123' :
+       targetRole?.name === 'Auditor' ? 'audit123' : 'staff123');
     const newUser: User = {
       ...userData,
       id: newUserId,
+      password: effectivePassword,
       roleName: targetRole ? targetRole.name : userData.roleName,
       userQrCode: userData.userQrCode || `USR-QR-${Math.floor(10000 + Math.random() * 90000)}`,
       avatarUrl:
         userData.avatarUrl ||
         'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     };
-    setUsers((prev) => [...prev, newUser]);
-    dbUpsertUser(newUser).catch(() => {});
+    
+    setUsers((prev) => {
+      const nextList = [...prev, newUser];
+      safeSetJson(STORAGE_KEYS.USERS, nextList);
+      return nextList;
+    });
+
+    // Save user to Supabase database with password
+    dbUpsertUser(newUser, effectivePassword).catch(() => {});
+
+    // Register in Supabase Auth so the user can log in with signInWithPassword
+    if (newUser.email) {
+      registerSupabaseAuthUser(newUser.email, effectivePassword).catch(() => {});
+    }
+
     addAuditLog('USER_CREATED', `Created new user profile: ${newUser.name} (${newUser.roleName})`);
     return newUser;
   };
 
   const editUser = (id: string, updates: Partial<User>) => {
-    let fullUpdatedUser: User | null = null;
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === id) {
-          let updatedRoleName = u.roleName;
-          if (updates.roleId) {
-            const r = roles.find((role) => role.id === updates.roleId);
-            if (r) updatedRoleName = r.name;
-          }
-          const updated = {
-            ...u,
-            ...updates,
-            roleName: updatedRoleName,
-          };
-          fullUpdatedUser = updated;
-          return updated;
+    const cleanId = String(id).trim();
+
+    setUsers((prevUsers) => {
+      const existing = prevUsers.find(
+        (u) =>
+          String(u.id).trim() === cleanId ||
+          String(u.id).trim().toLowerCase() === cleanId.toLowerCase()
+      );
+
+      if (!existing) {
+        console.warn(`User with ID "${id}" not found in current roster state.`);
+        return prevUsers;
+      }
+
+      let updatedRoleName = updates.roleName || existing.roleName;
+      if (updates.roleId) {
+        const r = roles.find(
+          (role) =>
+            role.id === updates.roleId ||
+            role.name.toLowerCase() === updates.roleId?.toLowerCase()
+        );
+        if (r) updatedRoleName = r.name;
+      }
+
+      // Filter out undefined values from updates so we don't clobber existing properties
+      const cleanUpdates: Partial<User> = {};
+      (Object.keys(updates) as (keyof User)[]).forEach((k) => {
+        if (updates[k] !== undefined) {
+          (cleanUpdates as any)[k] = updates[k];
         }
-        return u;
-      })
-    );
-    if (fullUpdatedUser) {
-      dbUpsertUser(fullUpdatedUser).catch(() => {});
-    }
-    addAuditLog('USER_UPDATED', `Updated user account and assigned role for user ID: ${id}`);
+      });
+
+      const updatedUser: User = {
+        ...existing,
+        ...cleanUpdates,
+        roleName: updatedRoleName,
+        roleId: updates.roleId || existing.roleId,
+      };
+
+      // Persist to Supabase asynchronously
+      dbUpsertUser(updatedUser, updatedUser.password).catch((err) => {
+        console.warn('Failed to update user in Supabase:', err);
+      });
+
+      // If password or email changed, ensure Supabase Auth sync
+      if (updatedUser.email && updatedUser.password) {
+        registerSupabaseAuthUser(updatedUser.email, updatedUser.password).catch(() => {});
+      }
+
+      // If this is the active logged in user, update currentUserId and currentUser
+      if (
+        String(currentUserId).trim().toLowerCase() === cleanId.toLowerCase() ||
+        String(currentUser.id).trim().toLowerCase() === cleanId.toLowerCase()
+      ) {
+        setCurrentUserId(updatedUser.id);
+      }
+
+      addAuditLog(
+        'USER_UPDATED',
+        `Updated user account and assigned role for: ${updatedUser.name} (${updatedUser.roleName})`
+      );
+
+      const nextList = prevUsers.map((u) =>
+        String(u.id).trim().toLowerCase() === cleanId.toLowerCase() ? updatedUser : u
+      );
+      safeSetJson(STORAGE_KEYS.USERS, nextList);
+      return nextList;
+    });
   };
 
   const deleteUser = (id: string) => {

@@ -70,13 +70,30 @@ export const AdminRBACView: React.FC = () => {
   // Selected User for QR Badge Modal
   const [selectedUserForQr, setSelectedUserForQr] = useState<User | null>(null);
 
+  // Merge database roles with DEFAULT_ROLES to guarantee all 4 standard roles exist
+  const standardOrder = ['Staff', 'Inventory Manager', 'Auditor', 'Admin'];
+  const roleMap = new Map<string, UserRole>();
+  DEFAULT_ROLES.forEach((dr) => roleMap.set(dr.name.toLowerCase(), dr));
+  roles.forEach((r) => roleMap.set(r.name.toLowerCase(), r));
+
+  const availableRoles = Array.from(roleMap.values()).sort((a, b) => {
+    const idxA = standardOrder.indexOf(a.name);
+    const idxB = standardOrder.indexOf(b.name);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  const defaultStaffRole = availableRoles.find((r) => r.name.toLowerCase() === 'staff') || availableRoles[0];
+
   // User Edit / Add Modal State
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userForm, setUserForm] = useState({
     name: '',
     email: '',
-    roleId: roles[0]?.id || 'role-staff',
+    roleId: defaultStaffRole?.id || 'role-staff',
     department: '',
     assignedLocationId: '',
     avatarUrl: '',
@@ -217,12 +234,11 @@ export const AdminRBACView: React.FC = () => {
   // User Actions
   const handleOpenAddUser = () => {
     setEditingUser(null);
-    const staffRole = roles.find((r) => r.name.toLowerCase() === 'staff') || roles[0];
     setUserForm({
       name: '',
       email: '',
-      roleId: staffRole?.id || 'role-staff',
-      department: departments[0]?.name || 'Logistics',
+      roleId: defaultStaffRole?.id || 'role-staff',
+      department: departments[0]?.name || 'Disaster Emergency Response',
       assignedLocationId: locations[0]?.id || '',
       avatarUrl: '',
       userQrCode: `USR-QR-${Math.floor(10000 + Math.random() * 90000)}`,
@@ -234,11 +250,16 @@ export const AdminRBACView: React.FC = () => {
 
   const handleOpenEditUser = (u: User) => {
     setEditingUser(u);
+    const matchedRole = availableRoles.find(
+      (r) => r.id === u.roleId || r.name.toLowerCase() === (u.roleName || '').toLowerCase()
+    );
+    const effectiveRoleId = matchedRole ? matchedRole.id : u.roleId || defaultStaffRole?.id || 'role-staff';
+
     setUserForm({
-      name: u.name,
-      email: u.email,
-      roleId: u.roleId,
-      department: u.department,
+      name: u.name || '',
+      email: u.email || '',
+      roleId: effectiveRoleId,
+      department: u.department || departments[0]?.name || 'Disaster Emergency Response',
       assignedLocationId: u.assignedLocationId || '',
       avatarUrl: u.avatarUrl || '',
       userQrCode: u.userQrCode || `USR-QR-${u.id.toUpperCase()}`,
@@ -250,36 +271,39 @@ export const AdminRBACView: React.FC = () => {
 
   const handleSaveUser = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userForm.name || !userForm.email) return;
+    if (!userForm.name.trim() || !userForm.email.trim()) return;
 
-    const selectedRole = roles.find((r) => r.id === userForm.roleId);
+    const selectedRole = availableRoles.find(
+      (r) => r.id === userForm.roleId || r.name.toLowerCase() === userForm.roleId.toLowerCase()
+    );
     const roleName = selectedRole ? selectedRole.name : 'Staff';
+    const roleId = selectedRole ? selectedRole.id : userForm.roleId || 'role-staff';
 
     if (editingUser) {
       editUser(editingUser.id, {
-        name: userForm.name,
-        email: userForm.email,
-        roleId: userForm.roleId,
+        name: userForm.name.trim(),
+        email: userForm.email.trim(),
+        roleId: roleId,
         roleName: roleName as any,
-        department: userForm.department,
+        department: userForm.department.trim(),
         assignedLocationId: userForm.assignedLocationId || undefined,
         avatarUrl: userForm.avatarUrl || undefined,
-        userQrCode: userForm.userQrCode,
-        password: userForm.password || undefined,
-        pin: userForm.pin || undefined,
+        userQrCode: userForm.userQrCode.trim(),
+        password: userForm.password.trim() || undefined,
+        pin: userForm.pin.trim() || undefined,
       });
     } else {
       addUser({
-        name: userForm.name,
-        email: userForm.email,
-        roleId: userForm.roleId,
+        name: userForm.name.trim(),
+        email: userForm.email.trim(),
+        roleId: roleId,
         roleName: roleName as any,
-        department: userForm.department,
+        department: userForm.department.trim(),
         assignedLocationId: userForm.assignedLocationId || undefined,
         avatarUrl: userForm.avatarUrl || undefined,
-        userQrCode: userForm.userQrCode,
-        password: userForm.password || (roleName === 'Admin' ? 'admin123' : roleName === 'Inventory Manager' ? 'manager123' : 'staff123'),
-        pin: userForm.pin || (roleName === 'Admin' ? '1234' : roleName === 'Inventory Manager' ? '2345' : '3456'),
+        userQrCode: userForm.userQrCode.trim(),
+        password: userForm.password.trim() || (roleName === 'Admin' ? 'admin123' : roleName === 'Inventory Manager' ? 'manager123' : roleName === 'Auditor' ? 'audit123' : 'staff123'),
+        pin: userForm.pin.trim() || (roleName === 'Admin' ? '1234' : roleName === 'Inventory Manager' ? '2345' : '3456'),
       });
     }
     setUserModalOpen(false);
@@ -1256,13 +1280,11 @@ export const AdminRBACView: React.FC = () => {
                     onChange={(e) => setUserForm({ ...userForm, roleId: e.target.value })}
                     className="w-full px-3 py-2 bg-[#F5F5F5] border border-[#E5E5E5] rounded-xl text-xs font-bold text-black focus:outline-none focus:border-black"
                   >
-                    {[...roles]
-                      .sort((a, b) => (a.name === 'Staff' ? -1 : b.name === 'Staff' ? 1 : 0))
-                      .map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.name} {r.name === 'Staff' ? '(Default)' : ''}
-                        </option>
-                      ))}
+                    {availableRoles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} {r.name === 'Staff' ? '(Default)' : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

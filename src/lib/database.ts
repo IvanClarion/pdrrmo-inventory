@@ -298,7 +298,13 @@ export function dbToRole(row: any): UserRole {
 
 export function userToDb(u: User, passwordHash?: string): any {
   let roleId = u.roleId;
-  if (!roleId && u.roleName) {
+  if (
+    !roleId ||
+    (u.roleName && roleId.includes('staff') && u.roleName !== 'Staff') ||
+    (u.roleName && roleId.includes('admin') && u.roleName !== 'Admin') ||
+    (u.roleName && roleId.includes('manager') && u.roleName !== 'Inventory Manager') ||
+    (u.roleName && roleId.includes('auditor') && u.roleName !== 'Auditor')
+  ) {
     roleId =
       u.roleName === 'Admin'
         ? 'role-admin'
@@ -316,14 +322,13 @@ export function userToDb(u: User, passwordHash?: string): any {
     password_hash: passwordHash || u.password || 'staff123',
     role_id: roleId || 'role-staff',
     department: u.department || null,
-    position: u.position || null,
+    position: u.roleName || u.position || null,
     contact_number: u.phone || null,
     user_qr_code: generatedQr,
     pin: u.pin || '1234',
     status: 'ACTIVE',
     assigned_location_id: u.assignedLocationId || null,
     avatar_url: u.avatarUrl || null,
-    created_at: new Date().toISOString(),
   };
 }
 
@@ -797,8 +802,35 @@ export async function dbUpsertUser(user: User, passwordHash?: string) {
   const client = getSupabase();
   if (!client) return;
   try {
-    const payload = userToDb(user, passwordHash);
-    await client.from('users').upsert(payload, { onConflict: 'id' });
+    const fullPayload = userToDb(user, passwordHash);
+
+    // 1. Try full upsert with onConflict on id
+    const { error: upsertErr } = await client.from('users').upsert(fullPayload, { onConflict: 'id' });
+    if (!upsertErr) return;
+
+    // 2. Try update with full payload
+    const { error: updateErr } = await client.from('users').update(fullPayload).eq('id', user.id);
+    if (!updateErr) return;
+
+    // 3. Fallback: try core columns only (if custom columns like pin/user_qr_code trigger schema error)
+    const corePayload: any = {
+      id: user.id,
+      name: user.name,
+      email: user.email.toLowerCase(),
+      password_hash: passwordHash || user.password || 'staff123',
+      role_id: fullPayload.role_id,
+      department: user.department || null,
+      assigned_location_id: user.assignedLocationId || null,
+      avatar_url: user.avatarUrl || null,
+    };
+
+    const { error: coreUpsertErr } = await client.from('users').upsert(corePayload, { onConflict: 'id' });
+    if (!coreUpsertErr) return;
+
+    const { error: coreUpdateErr } = await client.from('users').update(corePayload).eq('id', user.id);
+    if (coreUpdateErr) {
+      console.warn('Supabase dbUpsertUser notice:', coreUpdateErr.message);
+    }
   } catch (err) {
     console.warn('Failed to upsert user to Supabase:', err);
   }

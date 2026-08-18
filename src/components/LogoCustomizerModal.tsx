@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import { OrgBrandingConfig, LogoPresetId } from '../types';
 import { DEFAULT_BRANDING } from '../data/mockData';
+import { uploadLogoToSupabase, isSupabaseConfigured } from '../lib/supabase';
 import { BrandLogo, LOGO_PRESET_DEFINITIONS } from './BrandLogo';
 import {
   Upload,
@@ -50,6 +51,8 @@ export const LogoCustomizer: React.FC<LogoCustomizerProps> = ({
   );
   const [saveNotification, setSaveNotification] = useState<string | null>(null);
   const [previewTab, setPreviewTab] = useState<'header' | 'agreement' | 'badge'>('header');
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync formData if branding changes externally
@@ -60,7 +63,7 @@ export const LogoCustomizer: React.FC<LogoCustomizerProps> = ({
 
   if (!isOpen && !isEmbedded) return null;
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -69,6 +72,30 @@ export const LogoCustomizer: React.FC<LogoCustomizerProps> = ({
       return;
     }
 
+    setUploadError(null);
+
+    // Try Supabase Storage upload first
+    if (isSupabaseConfigured()) {
+      setIsUploading(true);
+      try {
+        const publicUrl = await uploadLogoToSupabase(file, branding.orgName || 'org_logo');
+        setFormData((prev) => ({
+          ...prev,
+          logoType: 'upload',
+          customLogoUrl: publicUrl,
+        }));
+        setActiveMode('upload');
+        setIsUploading(false);
+        return;
+      } catch (uploadErr: any) {
+        console.warn('Supabase logo upload failed, falling back to local Base64:', uploadErr);
+        setUploadError('Cloud upload failed — saving locally instead.');
+        setIsUploading(false);
+        // Fall through to Base64 fallback below
+      }
+    }
+
+    // Fallback: compress to Base64 data URL (localStorage)
     const reader = new FileReader();
     reader.onload = (event) => {
       const rawBase64 = event.target?.result as string;
@@ -280,6 +307,30 @@ export const LogoCustomizer: React.FC<LogoCustomizerProps> = ({
                     >
                       Remove
                     </button>
+                  </div>
+                )}
+
+                {/* Upload progress indicator */}
+                {isUploading && (
+                  <div className="flex items-center gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-xl animate-pulse">
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-xs font-bold text-blue-800">Uploading logo to cloud storage...</span>
+                  </div>
+                )}
+
+                {/* Upload error */}
+                {uploadError && (
+                  <div className="flex items-center gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span className="text-xs font-medium text-amber-800">{uploadError}</span>
+                  </div>
+                )}
+
+                {/* Cloud storage badge */}
+                {formData.customLogoUrl && formData.customLogoUrl.startsWith('http') && !isUploading && (
+                  <div className="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span className="text-[11px] font-medium text-emerald-800">Logo stored in Supabase cloud — persists across devices</span>
                   </div>
                 )}
               </div>
