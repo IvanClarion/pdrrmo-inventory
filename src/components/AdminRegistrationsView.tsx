@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
-import { UserRegistrationRequest, UserRoleName } from '../types';
+import { UserRegistrationRequest, UserRole, UserRoleName } from '../types';
+import { DEFAULT_ROLES } from '../data/mockData';
 import { UserQRBadgeModal } from './UserQRBadgeModal';
 import {
   UserCheck,
@@ -47,9 +48,26 @@ export const AdminRegistrationsView: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Merge database roles with DEFAULT_ROLES to guarantee all 4 roles exist
+  const standardOrder = ['Staff', 'Inventory Manager', 'Auditor', 'Admin'];
+  const roleMap = new Map<string, UserRole>();
+  DEFAULT_ROLES.forEach((dr) => roleMap.set(dr.name.toLowerCase(), dr));
+  roles.forEach((r) => roleMap.set(r.name.toLowerCase(), r));
+
+  const availableRoles = Array.from(roleMap.values()).sort((a, b) => {
+    const idxA = standardOrder.indexOf(a.name);
+    const idxB = standardOrder.indexOf(b.name);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  const defaultStaffRole = availableRoles.find((r) => r.name.toLowerCase() === 'staff') || availableRoles[0];
+
   // Approval Modal State
   const [selectedReqForApproval, setSelectedReqForApproval] = useState<UserRegistrationRequest | null>(null);
-  const [assignedRoleId, setAssignedRoleId] = useState<string>('');
+  const [assignedRoleId, setAssignedRoleId] = useState<string>(defaultStaffRole?.id || 'role-staff');
   const [assignedLocationId, setAssignedLocationId] = useState<string>('');
 
   // Rejection Modal State
@@ -62,6 +80,10 @@ export const AdminRegistrationsView: React.FC = () => {
   // Success Feedback Banner
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
 
+  const effectiveRoleId = (assignedRoleId && availableRoles.some((r) => r.id === assignedRoleId))
+    ? assignedRoleId
+    : (defaultStaffRole?.id || 'role-staff');
+
   const handleOpenApproveModal = (req: UserRegistrationRequest) => {
     if (requiresAuth(currentUser) && !isSessionAuthenticated) {
       openLoginModal(currentUser);
@@ -69,9 +91,11 @@ export const AdminRegistrationsView: React.FC = () => {
     }
 
     setSelectedReqForApproval(req);
-    // Preselect role matching requested role or fallback to Staff
-    const matchedRole = roles.find((r) => r.name.toLowerCase() === req.requestedRoleName?.toLowerCase()) || roles.find((r) => r.name === 'Staff') || roles[0];
-    setAssignedRoleId(matchedRole?.id || roles[0]?.id || '');
+    // Explicitly locate the Staff role
+    const currentStaff = availableRoles.find((r) => r.name.toLowerCase() === 'staff') || availableRoles[0];
+    if (currentStaff) {
+      setAssignedRoleId(currentStaff.id);
+    }
     setAssignedLocationId(locations[0]?.id || '');
   };
 
@@ -79,9 +103,11 @@ export const AdminRegistrationsView: React.FC = () => {
     e.preventDefault();
     if (!selectedReqForApproval) return;
 
+    const finalRoleId = effectiveRoleId || defaultStaffRole?.id || availableRoles[0]?.id || 'role-staff';
+
     const result = approveRegistration(
       selectedReqForApproval.id,
-      assignedRoleId,
+      finalRoleId,
       assignedLocationId || undefined
     );
 
@@ -89,7 +115,7 @@ export const AdminRegistrationsView: React.FC = () => {
       const approvedReqName = selectedReqForApproval.fullName;
       const approvedEmail = selectedReqForApproval.email;
       setSelectedReqForApproval(null);
-      setActionSuccessMsg(`Account for "${approvedReqName}" has been successfully approved and activated!`);
+      setActionSuccessMsg(`Account for "${approvedReqName}" has been successfully approved and activated as Staff!`);
       setTimeout(() => setActionSuccessMsg(null), 5000);
 
       // Find the newly created user to allow badge view
@@ -479,13 +505,13 @@ export const AdminRegistrationsView: React.FC = () => {
                   Assign System Role & Permissions *
                 </label>
                 <select
-                  value={assignedRoleId}
+                  value={effectiveRoleId}
                   onChange={(e) => setAssignedRoleId(e.target.value)}
                   className="w-full px-3 py-2 bg-[#F5F5F5] border border-[#E5E5E5] rounded-xl text-xs font-bold text-black focus:outline-none focus:border-black"
                 >
-                  {roles.map((r) => (
+                  {availableRoles.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.name} — {r.description?.slice(0, 50)}...
+                      {r.name} {r.name === 'Staff' ? '(Default)' : ''} — {r.description?.slice(0, 45)}...
                     </option>
                   ))}
                 </select>

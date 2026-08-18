@@ -867,7 +867,22 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // 1. Initial bulk fetch from Supabase database tables
     fetchAllFromSupabase()
       .then((data) => {
-        if (data.roles !== undefined && data.roles.length > 0) setRoles(data.roles);
+        if (data.roles !== undefined && data.roles.length > 0) {
+          const mergedRoles = [...data.roles];
+          DEFAULT_ROLES.forEach((defaultRole) => {
+            const exists = mergedRoles.some(
+              (r) => r.id === defaultRole.id || r.name.toLowerCase() === defaultRole.name.toLowerCase()
+            );
+            if (!exists) {
+              mergedRoles.push(defaultRole);
+              dbUpsertRole(defaultRole).catch(() => {});
+            }
+          });
+          setRoles(mergedRoles);
+        } else {
+          setRoles(DEFAULT_ROLES);
+          DEFAULT_ROLES.forEach((r) => dbUpsertRole(r).catch(() => {}));
+        }
         if (data.users !== undefined && data.users.length > 0) {
           setUsers(data.users);
           const savedAuthId = localStorage.getItem(STORAGE_KEYS.AUTH_USER_ID);

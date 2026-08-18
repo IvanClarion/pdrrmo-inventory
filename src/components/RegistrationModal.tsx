@@ -33,6 +33,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, on
   const [customDepartment, setCustomDepartment] = useState('');
   const [position, setPosition] = useState('');
   const [contactNumber, setContactNumber] = useState('');
+  const [requestedRoleName, setRequestedRoleName] = useState<'Staff' | 'Inventory Manager' | 'Auditor' | 'Admin'>('Staff');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [pin, setPin] = useState('');
@@ -58,6 +59,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, on
     setCustomDepartment('');
     setPosition('');
     setContactNumber('');
+    setRequestedRoleName('Staff');
     setPassword('');
     setPin('');
     setReasonOrNotes('');
@@ -101,7 +103,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, on
     setIsSubmitting(true);
 
     // Register user account in Supabase Auth asynchronously
-    signUpWithSupabase(cleanEmail, password, cleanName, 'Staff')
+    signUpWithSupabase(cleanEmail, password, cleanName, requestedRoleName)
       .then((res) => {
         console.log('Supabase user registration initiated:', res);
       })
@@ -115,7 +117,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, on
           department: finalDepartment,
           position: position.trim() || undefined,
           contactNumber: contactNumber.trim() || undefined,
-          requestedRoleName: 'Staff', // Default system role for all self-registrations
+          requestedRoleName: requestedRoleName || 'Staff',
           password,
           pin: pin.trim() || undefined,
           reasonOrNotes: reasonOrNotes.trim() || undefined,
