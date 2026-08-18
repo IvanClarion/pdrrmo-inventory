@@ -26,6 +26,83 @@ import confetti from 'canvas-confetti';
 import { audioService } from '../utils/audio';
 import { Item, BatchScanQueueItem, User } from '../types';
 
+import { getSupabase, isSupabaseConfigured } from '../lib/supabase';
+import { dbToItem } from '../lib/database';
+
+/**
+ * Intelligently extracts search terms (SKU, barcode, ID, serial) from raw scanned input.
+ * Handles:
+ * 1. JSON QR payloads: { "sku": "...", "barcode": "...", "id": "..." }
+ * 2. URL scan formats: https://.../?sku=... or /item/123
+ * 3. AIM symbology prefixes from hardware scanners: ]C1, ]e0, etc.
+ * 4. Leading/trailing zeros in UPC/EAN: "0012345678905" -> ["0012345678905", "012345678905", "12345678905"]
+ */
+function extractPotentialKeys(rawCode: string): string[] {
+  const clean = rawCode.trim();
+  if (!clean) return [];
+
+  const keys: Set<string> = new Set();
+  keys.add(clean);
+
+  // 1. Check if rawCode is JSON (from QR code labels)
+  if ((clean.startsWith('{') && clean.endsWith('}')) || (clean.startsWith('[') && clean.endsWith(']'))) {
+    try {
+      const parsed = JSON.parse(clean);
+      if (typeof parsed === 'object' && parsed !== null) {
+        if (parsed.sku) keys.add(String(parsed.sku).trim());
+        if (parsed.barcode) keys.add(String(parsed.barcode).trim());
+        if (parsed.id) keys.add(String(parsed.id).trim());
+        if (parsed.name) keys.add(String(parsed.name).trim());
+      }
+    } catch {
+      // not JSON
+    }
+  }
+
+  // 2. Check if rawCode is a URL
+  try {
+    if (clean.startsWith('http://') || clean.startsWith('https://')) {
+      const url = new URL(clean);
+      const skuParam = url.searchParams.get('sku');
+      const barcodeParam = url.searchParams.get('barcode');
+      const idParam = url.searchParams.get('id');
+      if (skuParam) keys.add(skuParam.trim());
+      if (barcodeParam) keys.add(barcodeParam.trim());
+      if (idParam) keys.add(idParam.trim());
+      const pathSegments = url.pathname.split('/').filter(Boolean);
+      if (pathSegments.length > 0) {
+        keys.add(pathSegments[pathSegments.length - 1]);
+      }
+    }
+  } catch {
+    // not URL
+  }
+
+  // 3. Strip AIM Symbology Identifiers (e.g. ]C1, ]E0, ]d2, ]Q3) from 2D/1D scanners
+  if (clean.startsWith(']') && clean.length > 3) {
+    const strippedAim = clean.slice(3).trim();
+    keys.add(strippedAim);
+  }
+
+  // 4. Barcode Numeric variations (strip leading zeroes or pad to 12/13 digits)
+  const digitsOnly = clean.replace(/\D/g, '');
+  if (digitsOnly.length >= 6) {
+    keys.add(digitsOnly);
+    // Strip leading zeroes (e.g. 012345678905 -> 12345678905)
+    keys.add(digitsOnly.replace(/^0+/, ''));
+    // Pad to 12 digits (UPC-A)
+    if (digitsOnly.length < 12) {
+      keys.add(digitsOnly.padStart(12, '0'));
+    }
+    // Pad to 13 digits (EAN-13)
+    if (digitsOnly.length === 12) {
+      keys.add(`0${digitsOnly}`);
+    }
+  }
+
+  return Array.from(keys).filter(Boolean);
+}
+
 export const ScannerView: React.FC = () => {
   const {
     items,
@@ -41,6 +118,7 @@ export const ScannerView: React.FC = () => {
     checkOutItem,
     openCheckoutFormModal,
     generateCheckoutFormFromBatch,
+    setActiveTab,
   } = useInventory();
 
   // Mode states
@@ -49,6 +127,7 @@ export const ScannerView: React.FC = () => {
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [manualInput, setManualInput] = useState<string>('');
   const [batchAssignee, setBatchAssignee] = useState<string>('');
+  const [isSearchingDb, setIsSearchingDb] = useState<boolean>(false);
   const [scannedResult, setScannedResult] = useState<{
     code: string;
     item?: Item;
@@ -151,9 +230,9 @@ export const ScannerView: React.FC = () => {
     };
   }, []);
 
-  const processScannedBarcode = (rawCode: string, source: 'CAMERA' | 'HARDWARE' | 'MANUAL') => {
-    const code = rawCode.trim();
-    if (!code) return;
+  const processScannedBarcode = async (rawCode: string, source: 'CAMERA' | 'HARDWARE' | 'MANUAL') => {
+    const rawTrimmed = rawCode.trim();
+    if (!rawTrimmed) return;
 
     if (soundEnabled) {
       if (isBatchMode) {
@@ -163,39 +242,81 @@ export const ScannerView: React.FC = () => {
       }
     }
 
-    // First check if matching item barcode/SKU or piece SKU
-    let targetSku = code;
-    let foundItem = items.find(
-      (i) =>
-        i.barcode.toLowerCase() === code.toLowerCase() ||
-        i.sku.toLowerCase() === code.toLowerCase() ||
-        (i.pieceSkus && i.pieceSkus.some((ps) => ps.toLowerCase() === code.toLowerCase()))
-    );
+    const candidateKeys = extractPotentialKeys(rawTrimmed);
+    const candidateKeysLower = candidateKeys.map((k) => k.toLowerCase());
 
-    if (foundItem) {
-      const pieceMatch = foundItem.pieceSkus?.find((ps) => ps.toLowerCase() === code.toLowerCase());
-      if (pieceMatch) {
-        targetSku = pieceMatch;
-      } else {
-        targetSku = foundItem.sku;
+    // 1. Search in local in-memory items
+    let foundItem = items.find((i) => {
+      const bLower = (i.barcode || '').toLowerCase();
+      const sLower = (i.sku || '').toLowerCase();
+      const idLower = (i.id || '').toLowerCase();
+      const nameLower = (i.name || '').toLowerCase();
+      const batchLower = (i.batchLotNumber || '').toLowerCase();
+
+      return (
+        candidateKeysLower.includes(bLower) ||
+        candidateKeysLower.includes(sLower) ||
+        candidateKeysLower.includes(idLower) ||
+        candidateKeysLower.includes(nameLower) ||
+        candidateKeysLower.includes(batchLower) ||
+        (i.serialNumbers && i.serialNumbers.some((sn) => candidateKeysLower.includes(sn.toLowerCase()))) ||
+        (i.pieceSkus && i.pieceSkus.some((ps) => candidateKeysLower.includes(ps.toLowerCase())))
+      );
+    });
+
+    // 2. Direct Supabase Database Query Fallback
+    if (!foundItem && isSupabaseConfigured()) {
+      setIsSearchingDb(true);
+      try {
+        const client = getSupabase();
+        if (client) {
+          for (const key of candidateKeys) {
+            const { data: dbRows, error: dbErr } = await client
+              .from('items')
+              .select('*')
+              .or(`barcode.eq.${key},sku.eq.${key},id.eq.${key},name.ilike.%${key}%`)
+              .limit(1);
+
+            if (!dbErr && dbRows && dbRows.length > 0) {
+              foundItem = dbToItem(dbRows[0]);
+              break;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Direct database item scan search fallback notice:', err);
+      } finally {
+        setIsSearchingDb(false);
       }
-      // Return custom instance with resolved exact SKU
-      foundItem = {
-        ...foundItem,
-        sku: targetSku,
-      };
     }
 
-    // Second check if matching user QR badge or email
-    const foundUser = users.find(
-      (u) =>
-        (u.userQrCode && u.userQrCode.toLowerCase() === code.toLowerCase()) ||
-        u.email.toLowerCase() === code.toLowerCase() ||
-        u.id.toLowerCase() === code.toLowerCase()
-    );
+    if (foundItem) {
+      const pieceMatch = foundItem.pieceSkus?.find((ps) => candidateKeysLower.includes(ps.toLowerCase()));
+      if (pieceMatch) {
+        foundItem = {
+          ...foundItem,
+          sku: pieceMatch,
+        };
+      }
+    }
+
+    // 3. Search in user QR badges, ID, or email
+    const foundUser = users.find((u) => {
+      const uQrLower = (u.userQrCode || '').toLowerCase();
+      const uEmailLower = (u.email || '').toLowerCase();
+      const uIdLower = (u.id || '').toLowerCase();
+      const uNameLower = (u.name || '').toLowerCase();
+
+      return (
+        candidateKeysLower.includes(uQrLower) ||
+        candidateKeysLower.includes(uEmailLower) ||
+        candidateKeysLower.includes(uIdLower) ||
+        candidateKeysLower.includes(uNameLower)
+      );
+    });
 
     const result = {
-      code,
+      code: rawTrimmed,
       item: foundItem,
       user: foundUser,
       timestamp: new Date().toLocaleTimeString(),
@@ -206,7 +327,7 @@ export const ScannerView: React.FC = () => {
     if (isBatchMode && foundItem) {
       const newQueueItem: BatchScanQueueItem = {
         id: `batch-${Date.now()}-${Math.floor(Math.random() * 100)}`,
-        barcode: code,
+        barcode: rawTrimmed,
         item: foundItem,
         scannedAt: new Date().toLocaleTimeString(),
         actionType: 'CHECK_OUT',
@@ -571,8 +692,18 @@ export const ScannerView: React.FC = () => {
                   <div>
                     <h4 className="font-bold text-[#1A1A1A] text-sm">Item Not Found</h4>
                     <p className="text-gray-500 text-xs mt-1">
-                      Barcode <code className="text-black font-mono font-bold">{scannedResult.code}</code> does not match any existing item.
+                      Scanned code <code className="text-black font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-gray-200">{scannedResult.code}</code> does not match any existing item in memory or database.
                     </p>
+                  </div>
+
+                  <div className="pt-2 flex flex-col sm:flex-row gap-2 justify-center">
+                    <button
+                      onClick={() => setActiveTab('inventory')}
+                      className="px-4 py-2 rounded-xl bg-black text-white text-xs font-bold hover:bg-neutral-800 transition flex items-center justify-center gap-1.5 shadow-xs"
+                    >
+                      <Package className="w-3.5 h-3.5" />
+                      <span>View Inventory Items</span>
+                    </button>
                   </div>
                 </div>
               )
