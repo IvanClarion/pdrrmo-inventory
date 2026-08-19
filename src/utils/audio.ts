@@ -93,6 +93,31 @@ class AudioService {
       // Audio context error
     }
   }
+
+  playWarningSound() {
+    try {
+      this.initCtx();
+      if (!this.ctx) return;
+
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+      osc.frequency.setValueAtTime(330, this.ctx.currentTime + 0.12);
+
+      gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.3);
+    } catch {
+      // Audio context silenced
+    }
+  }
 }
 
 export const audioService = new AudioService();

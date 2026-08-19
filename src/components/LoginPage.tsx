@@ -34,6 +34,8 @@ import {
   Database,
   Loader2,
   Sparkles,
+  ShieldAlert,
+  X,
 } from 'lucide-react';
 
 interface LoginPageProps {
@@ -48,6 +50,8 @@ export const LoginPage: React.FC<LoginPageProps> = () => {
     loginWithSupabase,
     branding,
     resetToDefaultSeedData,
+    sessionExpiryNotice,
+    setSessionExpiryNotice,
   } = useInventory();
 
   // Supabase live status
@@ -520,6 +524,25 @@ export const LoginPage: React.FC<LoginPageProps> = () => {
         {/* Right Side: Authentication Gateway Card */}
         <div className="w-full lg:w-1/2 max-w-md">
           <div className="bg-slate-900/90 backdrop-blur-md rounded-3xl border border-slate-800 p-6 sm:p-7 shadow-2xl space-y-5">
+            {/* Auto Logout Security Notice Banner */}
+            {sessionExpiryNotice && (
+              <div className="p-3.5 bg-amber-950/80 border border-amber-600/60 rounded-2xl text-xs text-amber-200 flex items-start gap-2.5 shadow-lg animate-in fade-in zoom-in-95">
+                <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <span className="font-bold block text-amber-300">Session Locked (Security Policy)</span>
+                  <span className="text-[11px] leading-relaxed text-amber-200/90">{sessionExpiryNotice}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSessionExpiryNotice(null)}
+                  className="text-amber-400 hover:text-white transition p-1 cursor-pointer"
+                  title="Dismiss alert"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             {/* Login Method Tabs */}
             <div className="flex items-center bg-slate-950 p-1 rounded-2xl border border-slate-800 text-xs font-bold">
               <button

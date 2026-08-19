@@ -245,10 +245,8 @@ export const Header: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModa
                     <button
                       key={u.id}
                       onClick={() => {
-                        if (roleRequiresAuth && (!isUserAuth || !isCurrent)) {
+                        if (!isCurrent) {
                           openLoginModal(u);
-                        } else {
-                          switchUser(u.id);
                         }
                       }}
                       className={`w-full text-left px-2.5 py-2 rounded-xl text-xs flex items-center justify-between transition cursor-pointer ${

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useInventory } from '../context/InventoryContext';
-import { User, UserRoleName } from '../types';
+import { User } from '../types';
 import {
   Lock,
   KeyRound,
@@ -9,7 +9,6 @@ import {
   EyeOff,
   AlertCircle,
   X,
-  Sparkles,
   CheckCircle2,
   QrCode,
   ArrowRight,
@@ -65,22 +64,6 @@ export const LoginModal: React.FC = () => {
   const currentRoleName = selectedUser.roleName;
   const isPrivileged = requiresAuth(selectedUser);
 
-  // Default demo credentials hints
-  const getDemoCredentials = (role: UserRoleName) => {
-    if (role === 'Admin') {
-      return { password: 'admin123', pin: '1234' };
-    }
-    if (role === 'Inventory Manager') {
-      return { password: 'manager123', pin: '2345' };
-    }
-    if (role === 'Staff') {
-      return { password: 'staff123', pin: '3456' };
-    }
-    return { password: 'auditor123', pin: '4567' };
-  };
-
-  const demoCreds = getDemoCredentials(currentRoleName);
-
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!password.trim()) {
@@ -134,16 +117,6 @@ export const LoginModal: React.FC = () => {
         }
       }
     }, 250);
-  };
-
-  const handleQuickDemoLogin = () => {
-    const cred = authMode === 'password' ? demoCreds.password : demoCreds.pin;
-    if (authMode === 'password') {
-      setPassword(demoCreds.password);
-    } else {
-      setPinDigits(demoCreds.pin.split(''));
-    }
-    executeLogin(cred);
   };
 
   return (
@@ -291,7 +264,7 @@ export const LoginModal: React.FC = () => {
                       setPassword(e.target.value);
                       setErrorMessage(null);
                     }}
-                    placeholder={`e.g. ${demoCreds.password}`}
+                    placeholder="Enter account password"
                     className="w-full px-3.5 py-2.5 bg-[#F9F9F9] border border-[#E5E5E5] rounded-xl text-xs font-medium focus:outline-none focus:border-black focus:bg-white pr-10 transition shadow-2xs"
                   />
                   <button
@@ -368,26 +341,6 @@ export const LoginModal: React.FC = () => {
               </button>
             </div>
           )}
-
-          {/* Demo 1-Click Credentials Helper */}
-          <div className="pt-3 border-t border-[#E5E5E5] flex items-center justify-between gap-2 bg-[#F9F9F9] p-3 rounded-2xl">
-            <div className="text-[11px] text-gray-600">
-              <span className="font-bold text-[#1A1A1A] block">Demo Credentials:</span>
-              <span className="font-mono text-gray-500">
-                Pwd: <strong className="text-black">{demoCreds.password}</strong> • PIN: <strong className="text-black">{demoCreds.pin}</strong>
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleQuickDemoLogin}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold flex items-center gap-1 shadow-xs transition cursor-pointer shrink-0"
-              title="Auto-fill credentials and log in"
-            >
-              <Sparkles className="w-3 h-3 text-emerald-200" />
-              <span>1-Click Sign In</span>
-            </button>
-          </div>
         </div>
       </div>
     </div>

@@ -192,6 +192,8 @@ interface InventoryContextType {
   loginWithSupabase: (email: string, password: string) => Promise<{ success: boolean; user?: User; error?: string }>;
   logoutUser: () => void;
   requiresAuth: (userOrRoleName: User | string) => boolean;
+  sessionExpiryNotice: string | null;
+  setSessionExpiryNotice: (msg: string | null) => void;
 
   // Actions
   switchUser: (userId: string, bypassAuth?: boolean) => void;
@@ -266,6 +268,7 @@ const STORAGE_KEYS = {
   BRANDING: 'pdrrmo_branding_v4',
   REGISTRATION_REQUESTS: 'pdrrmo_registration_requests_v4',
   DEPARTMENTS: 'pdrrmo_departments_v4',
+  LAST_ACTIVE_TIME: 'pdrrmo_last_active_time_v4',
 };
 
 function cleanStaleStorageKeys() {
@@ -476,9 +479,21 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Track authenticated user ID for active logged in session
   const [authenticatedUserId, setAuthenticatedUserId] = useState<string | null>(() => {
-    return localStorage.getItem(STORAGE_KEYS.AUTH_USER_ID) || null;
+    const savedId = localStorage.getItem(STORAGE_KEYS.AUTH_USER_ID);
+    const savedLastActive = localStorage.getItem(STORAGE_KEYS.LAST_ACTIVE_TIME);
+    if (savedId && savedLastActive) {
+      const elapsed = Date.now() - Number(savedLastActive);
+      // If idle for over 15 minutes, expire session on boot
+      if (elapsed > 15 * 60 * 1000) {
+        localStorage.removeItem(STORAGE_KEYS.AUTH_USER_ID);
+        localStorage.removeItem(STORAGE_KEYS.LAST_ACTIVE_TIME);
+        return null;
+      }
+    }
+    return savedId || null;
   });
 
+  const [sessionExpiryNotice, setSessionExpiryNotice] = useState<string | null>(null);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [targetLoginUser, setTargetLoginUser] = useState<User | null>(null);
 
@@ -852,6 +867,104 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [authenticatedUserId]);
 
+  // Auto Logout Handler for Privileged Roles (Admin & Inventory Manager)
+  const autoLogoutUser = (reason: string) => {
+    const userToLogOut = currentUser;
+    setAuthenticatedUserId(null);
+    localStorage.removeItem(STORAGE_KEYS.AUTH_USER_ID);
+    localStorage.removeItem(STORAGE_KEYS.LAST_ACTIVE_TIME);
+    signOutFromSupabase().catch(() => {});
+    setSessionExpiryNotice(`Privileged session (${userToLogOut.name} - ${userToLogOut.roleName}) automatically locked: ${reason}.`);
+
+    if (!isTabAccessible(activeTab)) {
+      setActiveTab(getDefaultAccessibleTab());
+    }
+
+    addAuditLog(
+      'AUTO_LOGOUT',
+      `Privileged session (${userToLogOut.name} - ${userToLogOut.roleName}) automatically locked and logged out: ${reason}.`,
+      'warning'
+    );
+    audioService.playWarningSound();
+  };
+
+  // Auto Logout on Inactivity (15 mins) or Browser/Tab Away (5 mins) for Admin and Inventory Manager
+  useEffect(() => {
+    if (!isSessionAuthenticated || !isPrivilegedManagerOrAdmin) return;
+
+    let lastActive = Date.now();
+    let hiddenSince: number | null = document.hidden ? Date.now() : null;
+
+    try {
+      localStorage.setItem(STORAGE_KEYS.LAST_ACTIVE_TIME, String(lastActive));
+    } catch {}
+
+    const updateActivity = () => {
+      const now = Date.now();
+      if (now - lastActive > 2000) {
+        lastActive = now;
+        try {
+          localStorage.setItem(STORAGE_KEYS.LAST_ACTIVE_TIME, String(now));
+        } catch {}
+      }
+    };
+
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+    activityEvents.forEach((ev) => {
+      window.addEventListener(ev, updateActivity, { passive: true });
+    });
+
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+
+      // 1. Inactivity timeout (15 mins continuous idle)
+      if (now - lastActive >= 15 * 60 * 1000) {
+        autoLogoutUser('15 minutes of inactivity detected');
+        return;
+      }
+
+      // 2. Background tab / browser away timeout (5 mins)
+      if (hiddenSince && now - hiddenSince >= 5 * 60 * 1000) {
+        autoLogoutUser('Browser tab inactive in background for 5 minutes');
+        return;
+      }
+    }, 5000);
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        hiddenSince = Date.now();
+      } else {
+        const now = Date.now();
+        if (hiddenSince && now - hiddenSince >= 5 * 60 * 1000) {
+          autoLogoutUser('Returned after browser tab was away for more than 5 minutes');
+          return;
+        }
+        hiddenSince = null;
+        updateActivity();
+      }
+    };
+
+    const handlePageHide = () => {
+      try {
+        localStorage.setItem(STORAGE_KEYS.LAST_ACTIVE_TIME, String(Date.now()));
+      } catch {}
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('beforeunload', handlePageHide);
+
+    return () => {
+      activityEvents.forEach((ev) => {
+        window.removeEventListener(ev, updateActivity);
+      });
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('beforeunload', handlePageHide);
+      clearInterval(intervalId);
+    };
+  }, [isSessionAuthenticated, isPrivilegedManagerOrAdmin, currentUser.id, currentUser.roleName]);
+
   // Supabase Auth Real-time Session Sync
   useEffect(() => {
     const supabase = getSupabase();
@@ -1222,6 +1335,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setAuthenticatedUserId(targetUser.id);
       setIsLoginModalOpen(false);
       setTargetLoginUser(null);
+      setSessionExpiryNotice(null);
+      try {
+        localStorage.setItem(STORAGE_KEYS.LAST_ACTIVE_TIME, String(Date.now()));
+      } catch {}
 
       // Persist password to database if not previously set
       dbUpsertUser({ ...targetUser, password: trimmedInput }, trimmedInput).catch(() => {});
@@ -1292,6 +1409,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setAuthenticatedUserId(loadedUser.id);
             setIsLoginModalOpen(false);
             setTargetLoginUser(null);
+            setSessionExpiryNotice(null);
+            try {
+              localStorage.setItem(STORAGE_KEYS.LAST_ACTIVE_TIME, String(Date.now()));
+            } catch {}
 
             // If password_hash was NULL, save the entered password in the database
             if (!dbUserRow.password_hash) {
@@ -1353,6 +1474,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setAuthenticatedUserId(matchedUser.id);
         setIsLoginModalOpen(false);
         setTargetLoginUser(null);
+        setSessionExpiryNotice(null);
+        try {
+          localStorage.setItem(STORAGE_KEYS.LAST_ACTIVE_TIME, String(Date.now()));
+        } catch {}
 
         // Ensure user is recorded in Supabase `users` table
         dbUpsertUser(matchedUser, cleanPass).catch(() => {});
@@ -1392,6 +1517,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const loggedOutUser = currentUser;
     setAuthenticatedUserId(null);
     localStorage.removeItem(STORAGE_KEYS.AUTH_USER_ID);
+    localStorage.removeItem(STORAGE_KEYS.LAST_ACTIVE_TIME);
+    setSessionExpiryNotice(null);
     signOutFromSupabase().catch(() => {});
 
     if (!isTabAccessible(activeTab)) {
@@ -2969,6 +3096,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         loginWithSupabase,
         logoutUser,
         requiresAuth,
+        sessionExpiryNotice,
+        setSessionExpiryNotice,
         switchUser,
         toggleOfflineMode,
         syncOfflineQueue,
