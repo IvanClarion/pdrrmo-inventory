@@ -32,6 +32,9 @@ import {
   Sparkles,
   ShieldCheck,
   PackageCheck,
+  CalendarClock,
+  Clock,
+  AlertOctagon,
 } from 'lucide-react';
 import { renderBarcodeToCanvas, renderQRCodeToCanvas } from '../utils/barcodeRenderer';
 import { ItemSetBuilderModal } from './inventory/ItemSetBuilderModal';
@@ -39,6 +42,7 @@ import { AddEditItemModal } from './inventory/AddEditItemModal';
 import { ItemDetailInspectorDrawer } from './inventory/ItemDetailInspectorDrawer';
 import { CategoryManagerModal } from './inventory/CategoryManagerModal';
 import { SkuConfigModal } from './inventory/SkuConfigModal';
+import { evaluateItemExpiry, getExpiryCatalogSummary } from '../utils/expiryUtils';
 
 export const InventoryView: React.FC = () => {
   const {
@@ -157,19 +161,25 @@ export const InventoryView: React.FC = () => {
     showToast('Item quick-saved successfully.');
   };
 
+  const expirySummary = getExpiryCatalogSummary(items);
+
   // Filter Items
   const filteredItems = items.filter((item) => {
     const q = searchQuery.toLowerCase().trim();
+    const isConsumableItem = item.type === 'consumable' || Boolean(item.isConsumable);
+    const expEval = evaluateItemExpiry(item);
+
     const matchesSearch =
       !q ||
-      item.name.toLowerCase().includes(q) ||
-      item.sku.toLowerCase().includes(q) ||
-      item.barcode.toLowerCase().includes(q) ||
-      (item.manufacturerSerialNumber && item.manufacturerSerialNumber.toLowerCase().includes(q)) ||
-      item.category.toLowerCase().includes(q) ||
-      item.locationName.toLowerCase().includes(q) ||
-      item.vendorName.toLowerCase().includes(q) ||
-      (item.tags && item.tags.some((t) => t.toLowerCase().includes(q)));
+      (item.name ? item.name.toLowerCase().includes(q) : false) ||
+      (item.sku ? item.sku.toLowerCase().includes(q) : false) ||
+      (item.barcode ? item.barcode.toLowerCase().includes(q) : false) ||
+      (item.batchLotNumber ? item.batchLotNumber.toLowerCase().includes(q) : false) ||
+      (item.manufacturerSerialNumber ? item.manufacturerSerialNumber.toLowerCase().includes(q) : false) ||
+      (item.category ? item.category.toLowerCase().includes(q) : false) ||
+      (item.locationName ? item.locationName.toLowerCase().includes(q) : false) ||
+      (item.vendorName ? item.vendorName.toLowerCase().includes(q) : false) ||
+      (Array.isArray(item.tags) && item.tags.some((t) => typeof t === 'string' && t.toLowerCase().includes(q)));
 
     const matchesCategory = inventoryCategoryFilter === 'ALL' || item.category === inventoryCategoryFilter;
     const matchesLocation = locationFilter === 'ALL' || item.locationId === locationFilter;
@@ -178,15 +188,25 @@ export const InventoryView: React.FC = () => {
     if (inventoryStockFilter === 'LOW_STOCK') {
       matchesStock = item.isLowStockMonitored !== false && item.quantity <= item.reorderPoint;
     } else if (inventoryStockFilter === 'CONSUMABLES') {
-      matchesStock = !!item.isConsumable;
+      matchesStock = isConsumableItem;
     } else if (inventoryStockFilter === 'DURABLE_ONLY') {
-      matchesStock = !item.isConsumable;
+      matchesStock = !isConsumableItem;
     } else if (inventoryStockFilter === 'SETS_ONLY') {
-      matchesStock = !!item.isSetOrBundle;
+      matchesStock = Boolean(item.isSetOrBundle);
     } else if (inventoryStockFilter === 'UNMONITORED') {
       matchesStock = item.isLowStockMonitored === false;
     } else if (inventoryStockFilter === 'DAMAGED') {
       matchesStock = item.condition === 'Damaged' || item.condition === 'Needs Maintenance';
+    } else if (inventoryStockFilter === 'EXPIRED') {
+      matchesStock = expEval.intervalCategory === 'expired';
+    } else if (inventoryStockFilter === 'EXPIRING_1_MONTH') {
+      matchesStock = expEval.intervalCategory === '1month';
+    } else if (inventoryStockFilter === 'EXPIRING_3_MONTHS') {
+      matchesStock = expEval.intervalCategory === '3months';
+    } else if (inventoryStockFilter === 'EXPIRING_6_MONTHS') {
+      matchesStock = expEval.intervalCategory === '6months';
+    } else if (inventoryStockFilter === 'EXPIRING_SOON') {
+      matchesStock = ['expired', '1month', '3months', '6months'].includes(expEval.intervalCategory);
     }
 
     return matchesSearch && matchesCategory && matchesLocation && matchesStock;
@@ -402,7 +422,7 @@ export const InventoryView: React.FC = () => {
             }`}
           >
             <ShieldCheck className="w-3 h-3" />
-            <span>Returnable Assets ({items.filter((i) => !i.isConsumable).length})</span>
+            <span>Returnable Assets ({items.filter((i) => i.type !== 'consumable' && !i.isConsumable).length})</span>
           </button>
           <button
             onClick={() => setInventoryStockFilter('CONSUMABLES')}
@@ -413,7 +433,7 @@ export const InventoryView: React.FC = () => {
             }`}
           >
             <PackageCheck className="w-3 h-3" />
-            <span>Consumables ({items.filter((i) => i.isConsumable).length})</span>
+            <span>Consumables ({items.filter((i) => i.type === 'consumable' || Boolean(i.isConsumable)).length})</span>
           </button>
           <button
             onClick={() => setInventoryStockFilter('LOW_STOCK')}
@@ -441,6 +461,63 @@ export const InventoryView: React.FC = () => {
             <Layers className="w-3 h-3" />
             <span>Sets & Kits ({items.filter((i) => i.isSetOrBundle).length})</span>
           </button>
+
+          {/* Expiration Interval Quick Filters */}
+          {expirySummary.expired.length > 0 && (
+            <button
+              onClick={() => setInventoryStockFilter('EXPIRED')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 ${
+                inventoryStockFilter === 'EXPIRED'
+                  ? 'bg-red-600 text-white shadow-xs'
+                  : 'bg-red-50 text-red-800 border border-red-200 hover:bg-red-100'
+              }`}
+            >
+              <AlertOctagon className="w-3 h-3 text-red-600" />
+              <span>Expired ({expirySummary.expired.length})</span>
+            </button>
+          )}
+
+          {expirySummary.expiring1Month.length > 0 && (
+            <button
+              onClick={() => setInventoryStockFilter('EXPIRING_1_MONTH')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 ${
+                inventoryStockFilter === 'EXPIRING_1_MONTH'
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : 'bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100'
+              }`}
+            >
+              <CalendarClock className="w-3 h-3 text-rose-600" />
+              <span>≤ 1 Mo Expiry ({expirySummary.expiring1Month.length})</span>
+            </button>
+          )}
+
+          {expirySummary.expiring3Months.length > 0 && (
+            <button
+              onClick={() => setInventoryStockFilter('EXPIRING_3_MONTHS')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 ${
+                inventoryStockFilter === 'EXPIRING_3_MONTHS'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
+              }`}
+            >
+              <Clock className="w-3 h-3 text-amber-700" />
+              <span>≤ 3 Mos Expiry ({expirySummary.expiring3Months.length})</span>
+            </button>
+          )}
+
+          {expirySummary.expiring6Months.length > 0 && (
+            <button
+              onClick={() => setInventoryStockFilter('EXPIRING_6_MONTHS')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 ${
+                inventoryStockFilter === 'EXPIRING_6_MONTHS'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100'
+              }`}
+            >
+              <CalendarClock className="w-3 h-3 text-blue-600" />
+              <span>≤ 6 Mos Expiry ({expirySummary.expiring6Months.length})</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -720,23 +797,40 @@ export const InventoryView: React.FC = () => {
 
                         {/* Monitoring Status Badge */}
                         <td className="py-3.5 px-4">
-                          {item.isLowStockMonitored !== false ? (
-                            isLow ? (
-                              <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 text-[10px] font-bold border border-amber-200 flex items-center gap-1 w-fit">
-                                <AlertTriangle className="w-3 h-3" />
-                                <span>Low (≤{item.reorderPoint})</span>
-                              </span>
+                          <div className="space-y-1">
+                            {item.isLowStockMonitored !== false ? (
+                              isLow ? (
+                                <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 text-[10px] font-bold border border-amber-200 flex items-center gap-1 w-fit">
+                                  <AlertTriangle className="w-3 h-3" />
+                                  <span>Low (≤{item.reorderPoint})</span>
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200 flex items-center gap-1 w-fit">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  <span>Monitored</span>
+                                </span>
+                              )
                             ) : (
-                              <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200 flex items-center gap-1 w-fit">
-                                <CheckCircle2 className="w-3 h-3" />
-                                <span>Monitored</span>
+                              <span className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 text-[10px] font-medium border border-gray-200 w-fit">
+                                Unmonitored
                               </span>
-                            )
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 text-[10px] font-medium border border-gray-200 w-fit">
-                              Unmonitored
-                            </span>
-                          )}
+                            )}
+
+                            {/* Expiry Pill */}
+                            {(() => {
+                              const exp = evaluateItemExpiry(item);
+                              if (exp.status === 'NO_EXPIRY') return null;
+                              return (
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold border flex items-center gap-1 w-fit ${exp.badgeClass}`}
+                                  title={`Expiration Date: ${exp.formattedDate} (${exp.status})`}
+                                >
+                                  <CalendarClock className="w-2.5 h-2.5 shrink-0" />
+                                  <span>{exp.badgeLabel}</span>
+                                </span>
+                              );
+                            })()}
+                          </div>
                         </td>
 
                         {/* Action Buttons */}
@@ -871,6 +965,19 @@ export const InventoryView: React.FC = () => {
                             <span>Set ({item.bundleItems?.length || 0})</span>
                           </span>
                         )}
+                        {(() => {
+                          const exp = evaluateItemExpiry(item);
+                          if (exp.status === 'NO_EXPIRY') return null;
+                          return (
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 shadow-xs border ${exp.badgeClass}`}
+                              title={`Expires on ${exp.formattedDate}`}
+                            >
+                              <CalendarClock className="w-3 h-3" />
+                              <span>{exp.badgeLabel}</span>
+                            </span>
+                          );
+                        })()}
                       </div>
 
                       <div className="absolute top-2 right-2">

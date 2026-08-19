@@ -21,8 +21,12 @@ import {
   ZoomIn,
   ShieldCheck,
   PackageCheck,
+  CalendarClock,
+  Clock,
+  AlertOctagon,
 } from 'lucide-react';
 import { renderBarcodeToCanvas, renderQRCodeToCanvas } from '../../utils/barcodeRenderer';
+import { evaluateItemExpiry } from '../../utils/expiryUtils';
 
 interface ItemDetailInspectorDrawerProps {
   item: Item | null;
@@ -256,6 +260,32 @@ export const ItemDetailInspectorDrawer: React.FC<ItemDetailInspectorDrawerProps>
               </div>
             )}
 
+            {/* Expiration & Shelf-Life Banner */}
+            {(() => {
+              const expEval = evaluateItemExpiry(item);
+              if (expEval.status === 'NO_EXPIRY') return null;
+              return (
+                <div
+                  className={`p-3.5 rounded-xl border flex items-center justify-between text-xs ${expEval.bgLightColor} ${expEval.borderColor}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <CalendarClock className={`w-4 h-4 shrink-0 ${expEval.textColor}`} />
+                    <div>
+                      <span className={`font-bold block ${expEval.textColor}`}>
+                        {expEval.badgeLabel}
+                      </span>
+                      <span className="text-[11px] text-gray-600">
+                        Expires on {expEval.formattedDate} {expEval.formattedTime ? `@ ${expEval.formattedTime}` : ''}
+                      </span>
+                    </div>
+                  </div>
+                  <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border shrink-0 ${expEval.badgeClass}`}>
+                    {expEval.status.replace(/_/g, ' ')}
+                  </span>
+                </div>
+              );
+            })()}
+
             {/* SKU & Barcode Details Box */}
             <div className="p-4 bg-white border border-[#E5E5E5] rounded-2xl space-y-3">
               <div className="flex items-center justify-between">
@@ -291,6 +321,28 @@ export const ItemDetailInspectorDrawer: React.FC<ItemDetailInspectorDrawerProps>
                   )}
                 </button>
               </div>
+
+              {item.batchLotNumber && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Batch / Lot Number
+                  </span>
+                  <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                    {item.batchLotNumber}
+                  </span>
+                </div>
+              )}
+
+              {(item.expirationDate || item.expiryDate) && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Expiration Date & Time
+                  </span>
+                  <span className="text-xs font-semibold text-gray-800">
+                    {item.expirationDate || item.expiryDate} {item.expirationTime ? `@ ${item.expirationTime}` : ''}
+                  </span>
+                </div>
+              )}
 
               {item.manufacturerSerialNumber && (
                 <div className="flex items-center justify-between">

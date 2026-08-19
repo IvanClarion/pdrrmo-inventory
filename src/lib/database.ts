@@ -1,6 +1,7 @@
 import { getSupabase, isSupabaseConfigured } from './supabase';
 import {
   Item,
+  ItemType,
   Location,
   Vendor,
   Transaction,
@@ -19,6 +20,11 @@ import {
 // ============================================================================
 
 export function itemToDb(item: Item): any {
+  const itemType = item.type || (item.isConsumable ? 'consumable' : 'returnable');
+  const expDateStr = item.expirationDate || item.expiryDate;
+  const cleanExpDate = expDateStr ? (expDateStr.includes('T') ? expDateStr.split('T')[0] : expDateStr) : null;
+  const cleanExpTime = item.expirationTime || null;
+
   return {
     id: item.id,
     sku: item.sku,
@@ -36,16 +42,26 @@ export function itemToDb(item: Item): any {
     vendor_id: item.vendorId || null,
     serial_numbers: item.serialNumbers || [],
     batch_lot_number: item.batchLotNumber || null,
-    expiry_date: item.expiryDate ? item.expiryDate.split('T')[0] : null,
+    expiry_date: cleanExpDate,
+    expiration_date: cleanExpDate,
+    expiration_time: cleanExpTime,
     condition: item.condition || 'Good',
     tags: item.tags || [],
     image_url: item.imageUrl || null,
+    type: itemType,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 }
 
-export function dbToItem(row: any): Item {
+export function dbToItem(row: any, locations: Location[] = [], vendors: Vendor[] = []): Item {
+  const matchedLoc = locations.find((l) => l.id === (row.location_id || row.locationId));
+  const matchedVen = vendors.find((v) => v.id === (row.vendor_id || row.vendorId));
+  const rawType = (row.type || (row.is_consumable ? 'consumable' : 'returnable')).toLowerCase();
+  const isConsumable = rawType === 'consumable' || Boolean(row.is_consumable);
+  const itemType: ItemType = isConsumable ? 'consumable' : 'returnable';
+  const resolvedExpDate = row.expiration_date || row.expiry_date || row.expiryDate || row.expirationDate;
+
   return {
     id: row.id,
     sku: row.sku,
@@ -60,12 +76,14 @@ export function dbToItem(row: any): Item {
     unitPrice: Number(row.unit_price ?? row.unitPrice ?? 0),
     costPrice: Number(row.cost_price ?? row.costPrice ?? 0),
     locationId: row.location_id || row.locationId || '',
-    locationName: row.location_name || row.locationName || '',
+    locationName: row.location_name || row.locationName || matchedLoc?.name || '',
     vendorId: row.vendor_id || row.vendorId || '',
-    vendorName: row.vendor_name || row.vendorName || '',
+    vendorName: row.vendor_name || row.vendorName || matchedVen?.name || '',
     serialNumbers: row.serial_numbers || row.serialNumbers || [],
     batchLotNumber: row.batch_lot_number || row.batchLotNumber,
-    expiryDate: row.expiry_date || row.expiryDate,
+    expiryDate: resolvedExpDate,
+    expirationDate: resolvedExpDate,
+    expirationTime: row.expiration_time || row.expirationTime || undefined,
     condition: row.condition || 'Good',
     tags: row.tags || [],
     imageUrl: row.image_url || row.imageUrl,
@@ -74,8 +92,9 @@ export function dbToItem(row: any): Item {
     isSetOrBundle: row.is_set_or_bundle ?? row.isSetOrBundle ?? false,
     bundleItems: row.bundle_items || row.bundleItems || [],
     supplierNotes: row.supplier_notes || row.supplierNotes,
-    isConsumable: row.is_consumable ?? row.isConsumable ?? false,
-    unitOfMeasure: row.unit_of_measure || row.unitOfMeasure || 'pcs',
+    type: itemType,
+    isConsumable: isConsumable,
+    unitOfMeasure: row.unit_of_measure || row.unitOfMeasure || (isConsumable ? 'pcs' : 'units'),
   };
 }
 
@@ -547,15 +566,6 @@ export async function fetchAllFromSupabase(): Promise<{
   }
 
   try {
-    const { data: itemsData, error: itemsErr } = await client.from('items').select('*');
-    if (!itemsErr && itemsData) {
-      results.items = itemsData.map(dbToItem);
-    }
-  } catch (err) {
-    console.warn('Items table query skipped:', err);
-  }
-
-  try {
     const { data: locData, error: locErr } = await client.from('locations').select('*');
     if (!locErr && locData) {
       results.locations = locData.map(dbToLocation);
@@ -574,6 +584,17 @@ export async function fetchAllFromSupabase(): Promise<{
   }
 
   try {
+    const { data: itemsData, error: itemsErr } = await client.from('items').select('*');
+    if (!itemsErr && itemsData) {
+      const locs = results.locations || [];
+      const vens = results.vendors || [];
+      results.items = itemsData.map((row: any) => dbToItem(row, locs, vens));
+    }
+  } catch (err) {
+    console.warn('Items table query skipped:', err);
+  }
+
+  try {
     const { data: txData, error: txErr } = await client
       .from('transactions')
       .select('*')
@@ -583,6 +604,18 @@ export async function fetchAllFromSupabase(): Promise<{
     }
   } catch (err) {
     console.warn('Transactions table query skipped:', err);
+  }
+
+  try {
+    const { data: pendData, error: pendErr } = await client
+      .from('pending_checkins')
+      .select('*')
+      .order('submitted_at', { ascending: false });
+    if (!pendErr && pendData) {
+      results.pendingCheckIns = pendData.map(dbToPendingCheckIn);
+    }
+  } catch (err) {
+    console.warn('Pending checkins table query skipped:', err);
   }
 
   try {
@@ -599,25 +632,10 @@ export async function fetchAllFromSupabase(): Promise<{
   }
 
   try {
-    const { data: deptData, error: deptErr } = await client.from('departments').select('*');
-    if (!deptErr && deptData) {
-      results.departments = deptData.map(dbToDepartment);
-    }
-  } catch (err) {
-    console.warn('Departments table query skipped:', err);
-  }
-
-  try {
-    const { data: pendData, error: pendErr } = await client.from('pending_checkins').select('*');
-    if (!pendErr && pendData) {
-      results.pendingCheckIns = pendData.map(dbToPendingCheckIn);
-    }
-  } catch (err) {
-    console.warn('Pending checkins table query skipped:', err);
-  }
-
-  try {
-    const { data: poData, error: poErr } = await client.from('purchase_orders').select('*');
+    const { data: poData, error: poErr } = await client
+      .from('purchase_orders')
+      .select('*')
+      .order('created_at', { ascending: false });
     if (!poErr && poData) {
       results.purchaseOrders = poData.map(dbToPurchaseOrder);
     }
@@ -626,7 +644,10 @@ export async function fetchAllFromSupabase(): Promise<{
   }
 
   try {
-    const { data: regData, error: regErr } = await client.from('registration_requests').select('*');
+    const { data: regData, error: regErr } = await client
+      .from('registration_requests')
+      .select('*')
+      .order('submitted_at', { ascending: false });
     if (!regErr && regData) {
       results.registrationRequests = regData.map(dbToRegistrationRequest);
     }
@@ -635,9 +656,13 @@ export async function fetchAllFromSupabase(): Promise<{
   }
 
   try {
-    const { data: idData, error: idErr } = await client.from('system_identity').select('*').limit(1);
-    if (!idErr && idData && idData.length > 0) {
-      results.systemIdentity = dbToSystemIdentity(idData[0]);
+    const { data: identityData, error: identityErr } = await client
+      .from('system_identity')
+      .select('*')
+      .limit(1)
+      .maybeSingle();
+    if (!identityErr && identityData) {
+      results.systemIdentity = dbToSystemIdentity(identityData);
     }
   } catch (err) {
     console.warn('System identity table query skipped:', err);
@@ -646,16 +671,35 @@ export async function fetchAllFromSupabase(): Promise<{
   return results;
 }
 
+export async function fetchItemsFromSupabase(): Promise<Item[]> {
+  const client = getSupabase();
+  if (!client) return [];
+  try {
+    const { data: locData } = await client.from('locations').select('*');
+    const { data: venData } = await client.from('vendors').select('*');
+    const locs = (locData || []).map(dbToLocation);
+    const vens = (venData || []).map(dbToVendor);
+    const { data: itemsData, error } = await client.from('items').select('*');
+    if (error) {
+      console.error('❌ Supabase fetchItems error:', error);
+      return [];
+    }
+    return (itemsData || []).map((row: any) => dbToItem(row, locs, vens));
+  } catch (err) {
+    console.error('❌ Failed to fetch items from Supabase:', err);
+    return [];
+  }
+}
+
 // System Identity CRUD
-export async function dbUpsertSystemIdentity(branding: OrgBrandingConfig) {
+export async function dbUpsertSystemIdentity(identity: OrgBrandingConfig) {
   const client = getSupabase();
   if (!client) return;
   try {
-    const payload = systemIdentityToDb(branding);
-    const { error: upsertErr } = await client.from('system_identity').upsert(payload, { onConflict: 'id' });
-    if (!upsertErr) return;
-
-    const { error: updateErr } = await client.from('system_identity').update(payload).eq('id', 'default');
+    const payload = systemIdentityToDb(identity);
+    const { error: updateErr } = await client
+      .from('system_identity')
+      .upsert(payload, { onConflict: 'id' });
     if (updateErr) {
       console.warn('Supabase dbUpsertSystemIdentity notice:', updateErr.message);
     }
@@ -689,6 +733,32 @@ export async function dbUpsertItem(item: Item): Promise<{ success: boolean; data
     return { success: true, data };
   } catch (err) {
     console.error('❌ Failed to upsert item to Supabase exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+export async function dbUpsertItems(items: Item[]): Promise<{ success: boolean; error?: any }> {
+  const client = getSupabase();
+  if (!client) return { success: false, error: 'Supabase client not initialized' };
+  try {
+    const payloads = items.map(itemToDb);
+    const { error } = await client.from('items').upsert(payloads, { onConflict: 'id' });
+    if (error) {
+      if (error.code === '23503') {
+        const safePayloads = payloads.map((p) => ({ ...p, location_id: null, vendor_id: null }));
+        const retryRes = await client.from('items').upsert(safePayloads, { onConflict: 'id' });
+        if (retryRes.error) {
+          console.error('❌ Supabase bulk items UPSERT retry error:', retryRes.error);
+          return { success: false, error: retryRes.error };
+        }
+        return { success: true };
+      }
+      console.error('❌ Supabase bulk items UPSERT error:', error);
+      return { success: false, error };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('❌ Failed to bulk upsert items to Supabase:', err);
     return { success: false, error: err };
   }
 }

@@ -33,9 +33,15 @@ import {
   Droplets,
   Boxes,
   RotateCcw,
+  Calendar,
+  CalendarClock,
+  Clock,
+  AlertOctagon,
+  Timer,
 } from 'lucide-react';
 import { renderBarcodeToCanvas, renderQRCodeToCanvas, generateValidUPC, formatAsValidUPC } from '../../utils/barcodeRenderer';
 import { uploadItemImageToSupabase } from '../../lib/supabase';
+import { evaluateItemExpiry, getFutureDatePreset } from '../../utils/expiryUtils';
 
 const PRESET_PHOTOS = [
   { label: 'Laptop', url: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=400&auto=format&fit=crop&q=80' },
@@ -125,6 +131,12 @@ export const AddEditItemModal: React.FC<AddEditItemModalProps> = ({
   const [condition, setCondition] = useState<ItemCondition>('Good');
   const [tags, setTags] = useState('Stock, Equipment');
   const [imageUrl, setImageUrl] = useState(PRESET_PHOTOS[0].url);
+
+  // Expiration & Batch/Lot Tracking states
+  const [hasExpiry, setHasExpiry] = useState<boolean>(false);
+  const [expirationDate, setExpirationDate] = useState<string>('');
+  const [expirationTime, setExpirationTime] = useState<string>('23:59');
+  const [batchLotNumber, setBatchLotNumber] = useState<string>('');
 
   // Location Customization States
   const [isAddingLocationInline, setIsAddingLocationInline] = useState(false);
@@ -232,7 +244,14 @@ export const AddEditItemModal: React.FC<AddEditItemModalProps> = ({
       setVendorId(editingItem.vendorId || vendors[0]?.id || '');
       setQuantity(editingItem.quantity);
       setUnitOfMeasure(editingItem.unitOfMeasure || 'units');
-      setIsConsumable(!!editingItem.isConsumable);
+      const isCons = editingItem.type?.toLowerCase() === 'consumable' || !!editingItem.isConsumable;
+      setIsConsumable(isCons);
+      const expDate = editingItem.expirationDate || editingItem.expiryDate || '';
+      const cleanExpDate = expDate.includes('T') ? expDate.split('T')[0] : expDate;
+      setExpirationDate(cleanExpDate);
+      setExpirationTime(editingItem.expirationTime || '23:59');
+      setBatchLotNumber(editingItem.batchLotNumber || '');
+      setHasExpiry(Boolean(cleanExpDate || editingItem.batchLotNumber || isCons));
       setUnitPrice(editingItem.unitPrice);
       setCostPrice(editingItem.costPrice);
       setDescription(editingItem.description || '');
@@ -258,6 +277,10 @@ export const AddEditItemModal: React.FC<AddEditItemModalProps> = ({
       setQuantity(1);
       setUnitOfMeasure('units');
       setIsConsumable(false);
+      setExpirationDate('');
+      setExpirationTime('23:59');
+      setBatchLotNumber('');
+      setHasExpiry(false);
       setUnitPrice(0);
       setCostPrice(0);
       setDescription('');
@@ -466,8 +489,13 @@ export const AddEditItemModal: React.FC<AddEditItemModalProps> = ({
       reorderPoint: isLowStockMonitored ? Math.max(0, reorderPoint) : 0,
       safetyStock: isLowStockMonitored ? Math.max(0, safetyStock) : 0,
       barcodeType: barcodeType,
+      type: (isConsumable ? 'consumable' : 'returnable') as 'returnable' | 'consumable',
       isConsumable: isConsumable,
-      unitOfMeasure: unitOfMeasure.trim() || 'units',
+      unitOfMeasure: unitOfMeasure.trim() || (isConsumable ? 'pcs' : 'units'),
+      expirationDate: hasExpiry && expirationDate.trim() ? expirationDate.trim() : undefined,
+      expiryDate: hasExpiry && expirationDate.trim() ? expirationDate.trim() : undefined,
+      expirationTime: hasExpiry && expirationDate.trim() && expirationTime.trim() ? expirationTime.trim() : undefined,
+      batchLotNumber: hasExpiry && batchLotNumber.trim() ? batchLotNumber.trim() : undefined,
     };
 
     if (editingItem) {
@@ -1545,6 +1573,143 @@ export const AddEditItemModal: React.FC<AddEditItemModalProps> = ({
               )}
             </div>
           )}
+
+          {/* EXPIRATION DATE & SHELF-LIFE TRACKING (6m, 3m, 1m & Expired Intervals) */}
+          <div className="bg-[#FFFDF7] border border-amber-200/80 p-4 rounded-2xl space-y-3.5 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-[#1A1A1A] flex items-center gap-1.5">
+                  <CalendarClock className="w-4 h-4 text-amber-600" />
+                  <span>Shelf-Life & Expiration Date Tracking</span>
+                  {isConsumable && (
+                    <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.2 rounded-full border border-amber-200">
+                      Recommended for Consumables
+                    </span>
+                  )}
+                </span>
+                <span className="text-[11px] text-gray-500 block mt-0.5">
+                  Tracks deterioration windows in intervals (6 months, 3 months, 1 month, and expired) with Dashboard alerts
+                </span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hasExpiry}
+                  onChange={(e) => {
+                    setHasExpiry(e.target.checked);
+                    if (e.target.checked && !expirationDate) {
+                      setExpirationDate(getFutureDatePreset(12)); // default 1 year ahead
+                    }
+                  }}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+              </label>
+            </div>
+
+            {hasExpiry ? (
+              <div className="space-y-3 pt-2 border-t border-amber-100">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Expiration Date */}
+                  <div className="sm:col-span-1">
+                    <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                      Expiration Date *
+                    </label>
+                    <input
+                      type="date"
+                      required={hasExpiry}
+                      value={expirationDate}
+                      onChange={(e) => setExpirationDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl text-xs font-bold text-black focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Expiration Time */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-gray-400" />
+                      <span>Cut-Off Time (Optional)</span>
+                    </label>
+                    <input
+                      type="time"
+                      value={expirationTime}
+                      onChange={(e) => setExpirationTime(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-semibold text-black focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Batch / Lot Number */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                      Batch / Lot Number
+                    </label>
+                    <input
+                      type="text"
+                      value={batchLotNumber}
+                      onChange={(e) => setBatchLotNumber(e.target.value)}
+                      placeholder="e.g. LOT-2026-MED08"
+                      className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-mono font-medium text-black focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mr-1">
+                    Quick Expiry Presets:
+                  </span>
+                  {[
+                    { label: '+1 Month (Critical)', months: 1 },
+                    { label: '+3 Months', months: 3 },
+                    { label: '+6 Months', months: 6 },
+                    { label: '+1 Year', months: 12 },
+                    { label: '+2 Years', months: 24 },
+                    { label: '+3 Years', months: 36 },
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => setExpirationDate(getFutureDatePreset(preset.months))}
+                      className="px-2 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-[10px] font-bold transition cursor-pointer"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Live Expiration Evaluation Preview */}
+                {expirationDate && (
+                  (() => {
+                    const evalResult = evaluateItemExpiry({ expirationDate, expirationTime });
+                    return (
+                      <div
+                        className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs ${evalResult.bgLightColor} ${evalResult.borderColor}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <AlertOctagon className={`w-4 h-4 shrink-0 ${evalResult.textColor}`} />
+                          <div>
+                            <span className={`font-bold block ${evalResult.textColor}`}>
+                              Tracking Interval: {evalResult.badgeLabel}
+                            </span>
+                            <span className="text-[11px] text-gray-600">
+                              Target Date: {evalResult.formattedDate} {evalResult.formattedTime ? `@ ${evalResult.formattedTime}` : ''}
+                            </span>
+                          </div>
+                        </div>
+                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border shrink-0 ${evalResult.badgeClass}`}>
+                          {evalResult.status.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                    );
+                  })()
+                )}
+              </div>
+            ) : (
+              <div className="text-[11px] text-gray-500 italic pt-1 border-t border-amber-100">
+                No expiration date tracked. Item will not trigger shelf-life or expiry disposal warnings.
+              </div>
+            )}
+          </div>
 
           {/* LOW STOCK MONITORING TOGGLE & THRESHOLDS */}
           <div className="bg-[#F8FAFC] border border-[#E2E8F0] p-4 rounded-2xl space-y-3">

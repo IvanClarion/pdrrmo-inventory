@@ -54,6 +54,7 @@ import {
 } from '../lib/supabase';
 import {
   fetchAllFromSupabase,
+  fetchItemsFromSupabase,
   dbUpsertItem,
   dbDeleteItem,
   dbInsertTransaction,
@@ -225,6 +226,7 @@ interface InventoryContextType {
   addItems: (newItems: Omit<Item, 'id'>[]) => Item[];
   editItem: (id: string, updates: Partial<Item>) => void;
   deleteItem: (id: string) => void;
+  refreshItemsFromDatabase: () => Promise<void>;
   addLocation: (location: Omit<Location, 'id'>) => Location;
   editLocation: (id: string, updates: Partial<Location>) => void;
   deleteLocation: (id: string) => void;
@@ -907,6 +909,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           );
           if (active && active.password) {
             ensureSupabaseAuthSession(active.email, active.password).catch(() => {});
+          }
+        }
+        if (data.items !== undefined) {
+          setItems(data.items);
+          safeSetJson(STORAGE_KEYS.ITEMS, data.items);
+          if (data.items.length > 0) {
+            const dynamicCats = Array.from(new Set(data.items.map((i) => i.category).filter(Boolean)));
+            if (dynamicCats.length > 0) {
+              setCategories((prev) => Array.from(new Set([...dynamicCats, ...prev])));
+            }
           }
         }
         if (data.locations !== undefined) {
@@ -1930,9 +1942,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const timestamp = Date.now();
     const createdItems: Item[] = newItemsData.map((itemData, idx) => {
+      const itemType = itemData.type || (itemData.isConsumable ? 'consumable' : 'returnable');
+      const isConsumable = itemType === 'consumable' || Boolean(itemData.isConsumable);
       const singleItem: Item = {
         ...itemData,
         id: `itm-${timestamp}-${idx}-${Math.floor(1000 + Math.random() * 9000)}`,
+        type: itemType,
+        isConsumable: isConsumable,
         quantity: typeof itemData.quantity === 'number' ? Math.max(1, itemData.quantity) : 1,
         pieceSkus: itemData.pieceSkus && itemData.pieceSkus.length > 0 ? itemData.pieceSkus : [itemData.sku],
       };
@@ -1940,13 +1956,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
 
     setItems((prev) => [...createdItems, ...prev]);
-    createdItems.forEach((it) => dbUpsertItem(it).catch(() => {}));
+    createdItems.forEach((it) => dbUpsertItem(it).catch((err) => {
+      console.error('Failed to sync added item to Supabase:', err);
+    }));
 
     if (createdItems.length === 1) {
       const single = createdItems[0];
       addAuditLog(
         'ITEM_CREATED',
-        `Added new inventory item: ${single.name} (SKU: ${single.sku}, Barcode: ${single.barcode}).`
+        `Added new inventory item: ${single.name} (SKU: ${single.sku}, Barcode: ${single.barcode}, Type: ${single.type}).`
       );
     } else {
       addAuditLog(
@@ -1982,7 +2000,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             });
           }
 
-          const itemResult = { ...i, ...updates, pieceSkus: updatedPieceSkus };
+          const resolvedType = updates.type || (updates.isConsumable !== undefined ? (updates.isConsumable ? 'consumable' : 'returnable') : i.type);
+          const resolvedIsConsumable = resolvedType ? resolvedType === 'consumable' : (updates.isConsumable !== undefined ? updates.isConsumable : i.isConsumable);
+
+          const itemResult: Item = {
+            ...i,
+            ...updates,
+            type: resolvedType,
+            isConsumable: resolvedIsConsumable,
+            pieceSkus: updatedPieceSkus,
+          };
           fullUpdatedItem = itemResult;
           return itemResult;
         }
@@ -1991,7 +2018,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     );
 
     if (fullUpdatedItem) {
-      dbUpsertItem(fullUpdatedItem).catch(() => {});
+      dbUpsertItem(fullUpdatedItem).catch((err) => {
+        console.error('Failed to sync edited item to Supabase:', err);
+      });
     }
 
     // Synchronize SKU, Name, and Barcode across transactions and pending check-ins
@@ -2145,6 +2174,23 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     dbDeleteItem(id).catch(() => {});
     if (target) {
       addAuditLog('ITEM_DELETED', `Deleted item ${target.name} (SKU: ${target.sku})`, 'warning');
+    }
+  };
+
+  const refreshItemsFromDatabase = async (): Promise<void> => {
+    if (!isSupabaseConfigured()) return;
+    try {
+      const dbItems = await fetchItemsFromSupabase();
+      setItems(dbItems);
+      safeSetJson(STORAGE_KEYS.ITEMS, dbItems);
+      if (dbItems.length > 0) {
+        const dynamicCats = Array.from(new Set(dbItems.map((i) => i.category).filter(Boolean)));
+        if (dynamicCats.length > 0) {
+          setCategories((prev) => Array.from(new Set([...dynamicCats, ...prev])));
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to refresh items from Supabase:', err);
     }
   };
 
@@ -2920,6 +2966,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         addItems,
         editItem,
         deleteItem,
+        refreshItemsFromDatabase,
         addLocation,
         editLocation,
         deleteLocation,

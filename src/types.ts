@@ -106,6 +106,8 @@ export interface ItemBundleComponent {
   isConsumable?: boolean;
 }
 
+export type ItemType = 'returnable' | 'consumable';
+
 export interface Item {
   id: string;
   sku: string;
@@ -127,6 +129,8 @@ export interface Item {
   serialNumbers?: string[];
   batchLotNumber?: string;
   expiryDate?: string;
+  expirationDate?: string;
+  expirationTime?: string;
   condition: ItemCondition;
   maintenanceHistory?: MaintenanceRecord[];
   scheduledMaintenanceDate?: string;
@@ -139,9 +143,18 @@ export interface Item {
   isSetOrBundle?: boolean;
   bundleItems?: ItemBundleComponent[];
   supplierNotes?: string;
+  type?: ItemType;
   isConsumable?: boolean;
   unitOfMeasure?: string;
 }
+
+export type ExpiryStatus =
+  | 'EXPIRED'
+  | 'EXPIRING_1_MONTH'
+  | 'EXPIRING_3_MONTHS'
+  | 'EXPIRING_6_MONTHS'
+  | 'GOOD'
+  | 'NO_EXPIRY';
 
 export interface SkuFormatConfig {
   prefix: string;
@@ -162,6 +175,7 @@ export interface DashboardTopMetricsConfig {
   pendingReturns?: boolean;
   maintenanceDamaged?: boolean;
   activePurchaseOrders?: boolean;
+  expiryAlerts?: boolean;
 }
 
 export interface DashboardWidgetConfig {
@@ -173,6 +187,7 @@ export interface DashboardWidgetConfig {
   showRecentTransactions: boolean;
   showHighValueItems: boolean;
   showPendingReturnsBanner: boolean;
+  showExpiryBanner?: boolean;
 }
 
 export type PendingCheckInStatus = 'PENDING' | 'APPROVED' | 'REJECTED';

@@ -23,12 +23,16 @@ import {
   ChevronRight,
   Eye,
   ShieldCheck,
+  PackageCheck,
   FolderOpen,
   AlertCircle,
   Check,
   RotateCcw,
   Sparkles,
+  CalendarClock,
+  AlertOctagon,
 } from 'lucide-react';
+import { evaluateItemExpiry, getExpiryCatalogSummary } from '../utils/expiryUtils';
 
 const DEFAULT_METRICS: DashboardTopMetricsConfig = {
   totalValuation: true,
@@ -41,6 +45,7 @@ const DEFAULT_METRICS: DashboardTopMetricsConfig = {
   pendingReturns: false,
   maintenanceDamaged: false,
   activePurchaseOrders: false,
+  expiryAlerts: true,
 };
 
 export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModal }) => {
@@ -106,6 +111,8 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
     .filter((i) => !i.isSetOrBundle)
     .sort((a, b) => b.unitPrice * b.quantity - a.unitPrice * a.quantity)
     .slice(0, 5);
+
+  const expirySummary = getExpiryCatalogSummary(items);
 
   const handleCardClick = (tab: string, catFilter: string = 'ALL', stockFilter: string = 'ALL') => {
     setInventoryCategoryFilter(catFilter);
@@ -256,6 +263,34 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
       hintText: 'Click to view PO Analytics →',
       getValue: () => `${activePurchaseOrdersCount} Orders`,
       onClick: () => handleCardClick('analytics'),
+    },
+    {
+      id: 'expiryAlerts',
+      title: 'Shelf-Life & Expiry Alerts',
+      description: 'Perishable & consumable supplies tracked in intervals (6m, 3m, 1m & Expired)',
+      category: 'Operations',
+      icon: CalendarClock,
+      iconBg: expirySummary.criticalCount > 0 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600',
+      badgeText:
+        expirySummary.expired.length > 0
+          ? `${expirySummary.expired.length} Expired`
+          : expirySummary.expiring1Month.length > 0
+          ? `${expirySummary.expiring1Month.length} ≤ 1 Mo`
+          : expirySummary.totalAlerts > 0
+          ? `${expirySummary.totalAlerts} Monitored`
+          : 'All Valid',
+      badgeClass:
+        expirySummary.expired.length > 0
+          ? 'text-red-700 bg-red-50 border border-red-200'
+          : expirySummary.expiring1Month.length > 0
+          ? 'text-rose-700 bg-rose-50 border border-rose-200'
+          : 'text-amber-700 bg-amber-50 border border-amber-200',
+      hintText: 'Click to inspect expiring supplies →',
+      getValue: () =>
+        expirySummary.totalAlerts > 0
+          ? `${expirySummary.totalAlerts} Alert${expirySummary.totalAlerts === 1 ? '' : 's'}`
+          : '0 Alerts',
+      onClick: () => handleCardClick('inventory', 'ALL', 'EXPIRING_SOON'),
     },
   ];
 
@@ -415,6 +450,161 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
           </div>
         </div>
       </div>
+
+      {/* Expiration & Shelf-Life Deterioration Notification Widget */}
+      {dashboardConfig.showExpiryBanner !== false && expirySummary.totalAlerts > 0 && (
+        <div className="bg-white border border-amber-200/90 rounded-2xl p-5 shadow-xs relative overflow-hidden space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-100 pb-3">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold ${
+                  expirySummary.criticalCount > 0
+                    ? 'bg-red-600 text-white animate-pulse'
+                    : 'bg-amber-500 text-white'
+                }`}
+              >
+                <CalendarClock className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-[#1A1A1A] text-sm flex items-center gap-2">
+                  <span>Shelf-Life & Expiration Alerts</span>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      expirySummary.criticalCount > 0
+                        ? 'bg-red-100 text-red-800 border-red-200'
+                        : 'bg-amber-100 text-amber-900 border-amber-200'
+                    }`}
+                  >
+                    {expirySummary.totalAlerts} Item{expirySummary.totalAlerts === 1 ? '' : 's'} Monitored
+                  </span>
+                </h4>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Automated interval tracking across <span className="font-semibold text-gray-700">6 Months, 3 Months, 1 Month, and Expired</span> items for disaster relief rations, medical kits, and consumable goods.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => handleCardClick('inventory', 'ALL', 'EXPIRING_SOON')}
+              className="self-start sm:self-auto text-xs font-bold px-3 py-1.5 rounded-xl bg-black text-white hover:bg-gray-800 transition cursor-pointer flex items-center gap-1 shrink-0"
+            >
+              <span>View All Expiring</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* 4 Interactive Interval Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Expired */}
+            <div
+              onClick={() => handleCardClick('inventory', 'ALL', 'EXPIRED')}
+              className={`p-3.5 rounded-xl border transition cursor-pointer flex items-center justify-between ${
+                expirySummary.expired.length > 0
+                  ? 'bg-red-50/80 border-red-200 hover:border-red-400 hover:shadow-xs'
+                  : 'bg-gray-50/50 border-gray-100 opacity-60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-red-100 text-red-700 flex items-center justify-center">
+                  <AlertOctagon className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-red-900">Expired</div>
+                  <div className="text-[10px] text-red-700">Past target date</div>
+                </div>
+              </div>
+              <span
+                className={`text-base font-bold ${
+                  expirySummary.expired.length > 0 ? 'text-red-700' : 'text-gray-400'
+                }`}
+              >
+                {expirySummary.expired.length}
+              </span>
+            </div>
+
+            {/* <= 1 Month */}
+            <div
+              onClick={() => handleCardClick('inventory', 'ALL', 'EXPIRING_1_MONTH')}
+              className={`p-3.5 rounded-xl border transition cursor-pointer flex items-center justify-between ${
+                expirySummary.expiring1Month.length > 0
+                  ? 'bg-rose-50/80 border-rose-200 hover:border-rose-400 hover:shadow-xs'
+                  : 'bg-gray-50/50 border-gray-100 opacity-60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-rose-900">≤ 1 Month</div>
+                  <div className="text-[10px] text-rose-700">Critical distribution</div>
+                </div>
+              </div>
+              <span
+                className={`text-base font-bold ${
+                  expirySummary.expiring1Month.length > 0 ? 'text-rose-700' : 'text-gray-400'
+                }`}
+              >
+                {expirySummary.expiring1Month.length}
+              </span>
+            </div>
+
+            {/* <= 3 Months */}
+            <div
+              onClick={() => handleCardClick('inventory', 'ALL', 'EXPIRING_3_MONTHS')}
+              className={`p-3.5 rounded-xl border transition cursor-pointer flex items-center justify-between ${
+                expirySummary.expiring3Months.length > 0
+                  ? 'bg-amber-50/80 border-amber-200 hover:border-amber-400 hover:shadow-xs'
+                  : 'bg-gray-50/50 border-gray-100 opacity-60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center">
+                  <CalendarClock className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-amber-900">≤ 3 Months</div>
+                  <div className="text-[10px] text-amber-800">Priority rotation</div>
+                </div>
+              </div>
+              <span
+                className={`text-base font-bold ${
+                  expirySummary.expiring3Months.length > 0 ? 'text-amber-800' : 'text-gray-400'
+                }`}
+              >
+                {expirySummary.expiring3Months.length}
+              </span>
+            </div>
+
+            {/* <= 6 Months */}
+            <div
+              onClick={() => handleCardClick('inventory', 'ALL', 'EXPIRING_6_MONTHS')}
+              className={`p-3.5 rounded-xl border transition cursor-pointer flex items-center justify-between ${
+                expirySummary.expiring6Months.length > 0
+                  ? 'bg-blue-50/80 border-blue-200 hover:border-blue-400 hover:shadow-xs'
+                  : 'bg-gray-50/50 border-gray-100 opacity-60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
+                  <CalendarClock className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-blue-900">≤ 6 Months</div>
+                  <div className="text-[10px] text-blue-700">Planned rotation</div>
+                </div>
+              </div>
+              <span
+                className={`text-base font-bold ${
+                  expirySummary.expiring6Months.length > 0 ? 'text-blue-700' : 'text-gray-400'
+                }`}
+              >
+                {expirySummary.expiring6Months.length}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Pending Check-Ins Return Verification Banner */}
       {dashboardConfig.showPendingReturnsBanner && pendingVerificationCount > 0 && (
@@ -957,6 +1147,7 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
 
                   {[
                     { key: 'showMetricCards', label: 'Top KPI Metric Cards Section (Master Toggle)', desc: 'Display top row of KPI metric cards' },
+                    { key: 'showExpiryBanner', label: 'Shelf-Life & Expiry Deterioration Alerts Banner', desc: 'Alert banner tracking 6m, 3m, 1m, and expired intervals for consumables' },
                     { key: 'showQuickActions', label: 'Quick Operational Workflows Shortcuts', desc: 'Shortcuts to Scan, Check-Out, Check-In, Print Labels' },
                     { key: 'showLowStockAlerts', label: 'Low Stock Safety Reorder Alerts Card', desc: 'Summary of items below safety stock threshold' },
                     { key: 'showCategoryDistribution', label: 'Category Distribution Breakdown Cards', desc: 'Interactive grid of SKU categories with click-to-filter' },
