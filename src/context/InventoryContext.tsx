@@ -13,6 +13,7 @@ import {
   PendingCheckIn,
   SkuFormatConfig,
   DashboardWidgetConfig,
+  DashboardMetricCard,
   CheckOutFormData,
   CheckOutFormItem,
   OrgBrandingConfig,
@@ -90,6 +91,10 @@ import {
   dbToRegistrationRequest,
   dbUpsertSystemIdentity,
   dbToSystemIdentity,
+  DEFAULT_DASHBOARD_METRIC_CARDS,
+  dbUpsertMetricCard,
+  dbSaveAllMetricCards,
+  dbToDashboardMetricCard,
 } from '../lib/database';
 
 interface InventoryContextType {
@@ -109,6 +114,9 @@ interface InventoryContextType {
   categories: string[];
   skuFormatConfig: SkuFormatConfig;
   dashboardConfig: DashboardWidgetConfig;
+  dashboardMetricCards: DashboardMetricCard[];
+  updateDashboardMetricCards: (cards: DashboardMetricCard[]) => void;
+  toggleDashboardMetricCard: (idOrKey: string, isDisplayed: boolean) => void;
   branding: OrgBrandingConfig;
   updateBranding: (updates: Partial<OrgBrandingConfig>) => void;
   resetBrandingToDefault: () => void;
@@ -265,6 +273,7 @@ const STORAGE_KEYS = {
   CATEGORIES: 'pdrrmo_categories_v4',
   SKU_FORMAT: 'pdrrmo_sku_format_v4',
   DASHBOARD_CONFIG: 'pdrrmo_dashboard_config_v4',
+  DASHBOARD_METRIC_CARDS: 'pdrrmo_dashboard_metric_cards_v4',
   BRANDING: 'pdrrmo_branding_v4',
   REGISTRATION_REQUESTS: 'pdrrmo_registration_requests_v4',
   DEPARTMENTS: 'pdrrmo_departments_v4',
@@ -615,6 +624,34 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showPendingReturnsBanner: true,
     };
   });
+
+  const [dashboardMetricCards, setDashboardMetricCards] = useState<DashboardMetricCard[]>(() => {
+    return safeGetJson(STORAGE_KEYS.DASHBOARD_METRIC_CARDS, DEFAULT_DASHBOARD_METRIC_CARDS);
+  });
+
+  const updateDashboardMetricCards = (cards: DashboardMetricCard[]) => {
+    setDashboardMetricCards(cards);
+    safeSetJson(STORAGE_KEYS.DASHBOARD_METRIC_CARDS, cards);
+    dbSaveAllMetricCards(cards).catch((err) => {
+      console.warn('Failed to save dashboard metric cards to Supabase:', err);
+    });
+    addAuditLog('DASHBOARD_CUSTOMIZED', `Updated dashboard metric cards layout (${cards.filter(c => c.is_displayed).length} active)`);
+  };
+
+  const toggleDashboardMetricCard = (idOrKey: string, isDisplayed: boolean) => {
+    setDashboardMetricCards((prev) => {
+      const next = prev.map((c) => {
+        if (c.id === idOrKey || c.card_key === idOrKey || c.cardKey === idOrKey) {
+          const updated = { ...c, is_displayed: isDisplayed, isDisplayed: isDisplayed };
+          dbUpsertMetricCard(updated).catch(() => {});
+          return updated;
+        }
+        return c;
+      });
+      safeSetJson(STORAGE_KEYS.DASHBOARD_METRIC_CARDS, next);
+      return next;
+    });
+  };
 
   const [branding, setBranding] = useState<OrgBrandingConfig>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.BRANDING);
@@ -1071,6 +1108,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           setBranding(data.systemIdentity);
           safeSetJson(STORAGE_KEYS.BRANDING, data.systemIdentity);
         }
+        if (data.dashboardMetricCards !== undefined) {
+          if (data.dashboardMetricCards.length > 0) {
+            setDashboardMetricCards(data.dashboardMetricCards);
+            safeSetJson(STORAGE_KEYS.DASHBOARD_METRIC_CARDS, data.dashboardMetricCards);
+          } else {
+            setDashboardMetricCards(DEFAULT_DASHBOARD_METRIC_CARDS);
+            dbSaveAllMetricCards(DEFAULT_DASHBOARD_METRIC_CARDS).catch(() => {});
+          }
+        }
       })
       .catch((err) => {
         console.warn('Initial Supabase database fetch notice:', err);
@@ -1225,6 +1271,27 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             const identity = dbToSystemIdentity(payload.new);
             setBranding(identity);
             safeSetJson(STORAGE_KEYS.BRANDING, identity);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'dashboard_metric_cards' },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            const newCard = dbToDashboardMetricCard(payload.new);
+            setDashboardMetricCards((prev) => {
+              const exists = prev.some((c) => c.id === newCard.id);
+              const list = exists ? prev.map((c) => (c.id === newCard.id ? newCard : c)) : [...prev, newCard];
+              return list.sort((a, b) => a.display_order - b.display_order);
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            const updated = dbToDashboardMetricCard(payload.new);
+            setDashboardMetricCards((prev) =>
+              prev.map((c) => (c.id === updated.id ? updated : c)).sort((a, b) => a.display_order - b.display_order)
+            );
+          } else if (payload.eventType === 'DELETE') {
+            setDashboardMetricCards((prev) => prev.filter((c) => c.id !== payload.old.id));
           }
         }
       )
@@ -3100,6 +3167,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         categories,
         skuFormatConfig,
         dashboardConfig,
+        dashboardMetricCards,
+        updateDashboardMetricCards,
+        toggleDashboardMetricCard,
         branding,
         updateBranding,
         resetBrandingToDefault,

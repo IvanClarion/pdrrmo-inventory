@@ -184,6 +184,25 @@ export interface DashboardTopMetricsConfig {
   expiryAlerts?: boolean;
 }
 
+export interface DashboardMetricCard {
+  id: string;
+  card_key: string;
+  cardKey?: string;
+  title: string;
+  category: string;
+  description: string;
+  unit_label?: string;
+  unitLabel?: string;
+  icon_name?: string;
+  iconName?: string;
+  is_displayed: boolean;
+  isDisplayed?: boolean;
+  display_order: number;
+  displayOrder?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface DashboardWidgetConfig {
   showMetricCards: boolean;
   metricCards?: DashboardTopMetricsConfig;

@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Skeleton from 'react-loading-skeleton';
 import { useInventory } from '../context/InventoryContext';
-import { DashboardTopMetricsConfig, DashboardWidgetConfig, Item } from '../types';
+import { DashboardTopMetricsConfig, DashboardWidgetConfig, DashboardMetricCard, Item } from '../types';
+import { DEFAULT_DASHBOARD_METRIC_CARDS } from '../lib/database';
+import { audioService } from '../utils/audio';
 import {
   Boxes,
   QrCode,
@@ -58,6 +60,9 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
     purchaseOrders,
     dashboardConfig,
     updateDashboardConfig,
+    dashboardMetricCards,
+    updateDashboardMetricCards,
+    toggleDashboardMetricCard,
     setActiveTab,
     setInventoryCategoryFilter,
     setInventoryStockFilter,
@@ -74,6 +79,7 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
   const [isCustomizeModalOpen, setIsCustomizeModalOpen] = useState<boolean>(false);
   const [customizeModalTab, setCustomizeModalTab] = useState<'metrics' | 'sections'>('metrics');
   const [tempWidgetConfig, setTempWidgetConfig] = useState<DashboardWidgetConfig>(dashboardConfig);
+  const [tempMetricCards, setTempMetricCards] = useState<DashboardMetricCard[]>([]);
 
   const isAdmin = hasPermission('canManageRoles') || currentRole.name === 'Admin' || currentRole.id === 'role-admin' || hasPermission('canEditItems');
 
@@ -120,275 +126,200 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
     setActiveTab(tab);
   };
 
-  // Top Metric Card Definitions Catalog
-  const METRIC_CARD_DEFINITIONS: Array<{
-    id: keyof DashboardTopMetricsConfig;
-    title: string;
-    description: string;
-    category: string;
-    icon: React.ComponentType<{ className?: string }>;
-    iconBg: string;
-    badgeText?: string;
-    badgeClass?: string;
-    hintText: string;
-    getValue: () => string;
-    onClick: () => void;
-  }> = [
-    {
-      id: 'totalValuation',
-      title: 'Total Assets Valuation',
-      description: 'Current aggregate monetary value of all physical inventory in PHP (₱)',
-      category: 'Financial',
-      icon: DollarSign,
-      iconBg: 'bg-emerald-50 text-emerald-600',
-      badgeText: '+4.2% mo/mo',
-      badgeClass: 'text-emerald-700 bg-emerald-50 border border-emerald-200',
-      hintText: 'Click to open Analytics Report →',
-      getValue: () => `₱${totalValuationPHP.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`,
-      onClick: () => handleCardClick('analytics'),
-    },
-    {
-      id: 'lowStockAlerts',
-      title: 'Stock Safety Alerts',
-      description: 'SKUs currently at or below their safety reorder threshold point',
-      category: 'Inventory',
-      icon: AlertTriangle,
-      iconBg: 'bg-red-50 text-red-600',
-      badgeText: 'Requires Reorder',
-      badgeClass: 'text-red-700 bg-red-50 border border-red-200',
-      hintText: 'Click to view Low Stock list →',
-      getValue: () => `${lowStockItems.length} SKUs`,
-      onClick: () => handleCardClick('inventory', 'ALL', 'LOW_STOCK'),
-    },
-    {
-      id: 'activeLoans',
-      title: 'Active Field Loans',
-      description: 'Assets currently checked out to team members, vehicles, or projects',
-      category: 'Operations',
-      icon: ArrowRightLeft,
-      iconBg: 'bg-blue-50 text-blue-600',
-      badgeText: 'Deployed Out',
-      badgeClass: 'text-blue-700 bg-blue-50 border border-blue-200',
-      hintText: 'Click to open Check-Out Terminal →',
-      getValue: () => `${activeCheckedOutTxns.length} Items`,
-      onClick: () => handleCardClick('checkinout'),
-    },
-    {
-      id: 'categoriesCount',
-      title: 'Active Categories',
-      description: 'Distinct classification taxonomy groups organized in master inventory',
-      category: 'Catalog',
-      icon: Boxes,
-      iconBg: 'bg-purple-50 text-purple-600',
-      badgeText: 'Configured',
-      badgeClass: 'text-purple-700 bg-purple-50 border border-purple-200',
-      hintText: 'Click to view Inventory Master →',
-      getValue: () => `${categories.length} Categories`,
-      onClick: () => handleCardClick('inventory'),
-    },
-    {
-      id: 'totalMasterSkus',
-      title: 'Master Catalog SKUs',
-      description: 'Total number of distinct inventory SKU items registered in database',
-      category: 'Catalog',
-      icon: Package,
-      iconBg: 'bg-neutral-100 text-neutral-800',
-      badgeText: 'Master Catalog',
-      badgeClass: 'text-neutral-700 bg-neutral-100 border border-neutral-200',
-      hintText: 'Click to view Master Catalog →',
-      getValue: () => `${items.length} SKUs`,
-      onClick: () => handleCardClick('inventory'),
-    },
-    {
-      id: 'totalPhysicalUnits',
-      title: 'Total Physical Units',
-      description: 'Sum of all individual physical units across warehouse & field locations',
-      category: 'Inventory',
-      icon: Layers,
-      iconBg: 'bg-indigo-50 text-indigo-600',
-      badgeText: 'Physical Units',
-      badgeClass: 'text-indigo-700 bg-indigo-50 border border-indigo-200',
-      hintText: 'Click to browse all physical units →',
-      getValue: () => `${totalPhysicalUnits} Units`,
-      onClick: () => handleCardClick('inventory'),
-    },
-    {
-      id: 'setsAndBundles',
-      title: 'Equipment Sets & Kits',
-      description: 'Pre-packaged kit bundles composed of multi-piece components',
-      category: 'Operations',
-      icon: Boxes,
-      iconBg: 'bg-amber-50 text-amber-600',
-      badgeText: 'Kits & Sets',
-      badgeClass: 'text-amber-700 bg-amber-50 border border-amber-200',
-      hintText: 'Click to filter Sets & Bundles →',
-      getValue: () => `${setsAndBundlesCount} Bundles`,
-      onClick: () => handleCardClick('inventory'),
-    },
-    {
-      id: 'pendingReturns',
-      title: 'Pending Return Approvals',
-      description: 'Return check-ins submitted by field staff waiting for Admin verification',
-      category: 'Operations',
-      icon: Clock,
-      iconBg: 'bg-orange-50 text-orange-600',
-      badgeText: 'Needs Inspection',
-      badgeClass: 'text-orange-700 bg-orange-50 border border-orange-200',
-      hintText: 'Click to verify pending returns →',
-      getValue: () => `${pendingVerificationCount} Requests`,
-      onClick: () => handleCardClick('checkinout'),
-    },
-    {
-      id: 'maintenanceDamaged',
-      title: 'Damaged & Maintenance',
-      description: 'Items reported with damage, fair wear, or due for scheduled servicing',
-      category: 'Condition',
-      icon: AlertCircle,
-      iconBg: 'bg-rose-50 text-rose-600',
-      badgeText: 'Attention Needed',
-      badgeClass: 'text-rose-700 bg-rose-50 border border-rose-200',
-      hintText: 'Click to inspect items →',
-      getValue: () => `${damagedOrMaintenanceItems.length} Items`,
-      onClick: () => handleCardClick('inventory'),
-    },
-    {
-      id: 'activePurchaseOrders',
-      title: 'Active Purchase Orders',
-      description: 'Procurement orders currently in Draft, Sent, or Approved status',
-      category: 'Financial',
-      icon: Building2,
-      iconBg: 'bg-cyan-50 text-cyan-600',
-      badgeText: 'Procurement',
-      badgeClass: 'text-cyan-700 bg-cyan-50 border border-cyan-200',
-      hintText: 'Click to view PO Analytics →',
-      getValue: () => `${activePurchaseOrdersCount} Orders`,
-      onClick: () => handleCardClick('analytics'),
-    },
-    {
-      id: 'expiryAlerts',
-      title: 'Shelf-Life & Expiry Alerts',
-      description: 'Perishable & consumable supplies tracked in intervals (6m, 3m, 1m & Expired)',
-      category: 'Operations',
-      icon: CalendarClock,
-      iconBg: expirySummary.criticalCount > 0 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600',
-      badgeText:
-        expirySummary.expired.length > 0
-          ? `${expirySummary.expired.length} Expired`
-          : expirySummary.expiring1Month.length > 0
-          ? `${expirySummary.expiring1Month.length} ≤ 1 Mo`
-          : expirySummary.totalAlerts > 0
-          ? `${expirySummary.totalAlerts} Monitored`
-          : 'All Valid',
-      badgeClass:
-        expirySummary.expired.length > 0
-          ? 'text-red-700 bg-red-50 border border-red-200'
-          : expirySummary.expiring1Month.length > 0
-          ? 'text-rose-700 bg-rose-50 border border-rose-200'
-          : 'text-amber-700 bg-amber-50 border border-amber-200',
-      hintText: 'Click to inspect expiring supplies →',
-      getValue: () =>
-        expirySummary.totalAlerts > 0
-          ? `${expirySummary.totalAlerts} Alert${expirySummary.totalAlerts === 1 ? '' : 's'}`
-          : '0 Alerts',
-      onClick: () => handleCardClick('inventory', 'ALL', 'EXPIRING_SOON'),
-    },
-  ];
+  // Sync tempMetricCards whenever modal opens
+  useEffect(() => {
+    if (isCustomizeModalOpen) {
+      const sorted = [...dashboardMetricCards].sort(
+        (a, b) => (a.display_order ?? a.displayOrder ?? 0) - (b.display_order ?? b.displayOrder ?? 0)
+      );
+      setTempMetricCards(sorted);
+    }
+  }, [isCustomizeModalOpen, dashboardMetricCards]);
 
-  // Active metrics configuration resolution
-  const activeMetricsConfig = {
-    ...DEFAULT_METRICS,
-    ...(dashboardConfig.metricCards || {}),
+  // Dynamic runtime data generator for each database metric card
+  const getMetricCardRuntime = (card: DashboardMetricCard) => {
+    const key = (card.card_key || card.cardKey || '').trim();
+    switch (key) {
+      case 'totalValuation':
+        return {
+          icon: DollarSign,
+          iconBg: 'bg-emerald-50 text-emerald-600',
+          badgeText: '+4.2% mo/mo',
+          badgeClass: 'text-emerald-700 bg-emerald-50 border border-emerald-200',
+          hintText: 'Click to open Analytics Report →',
+          value: `₱${totalValuationPHP.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`,
+          onClick: () => handleCardClick('analytics'),
+        };
+      case 'lowStockAlerts':
+        return {
+          icon: AlertTriangle,
+          iconBg: 'bg-red-50 text-red-600',
+          badgeText: 'Requires Reorder',
+          badgeClass: 'text-red-700 bg-red-50 border border-red-200',
+          hintText: 'Click to view Low Stock list →',
+          value: `${lowStockItems.length} SKUs`,
+          onClick: () => handleCardClick('inventory', 'ALL', 'LOW_STOCK'),
+        };
+      case 'activeLoans':
+        return {
+          icon: ArrowRightLeft,
+          iconBg: 'bg-blue-50 text-blue-600',
+          badgeText: 'Deployed Out',
+          badgeClass: 'text-blue-700 bg-blue-50 border border-blue-200',
+          hintText: 'Click to open Check-Out Terminal →',
+          value: `${activeCheckedOutTxns.length} Items`,
+          onClick: () => handleCardClick('checkinout'),
+        };
+      case 'categoriesCount':
+        return {
+          icon: Boxes,
+          iconBg: 'bg-purple-50 text-purple-600',
+          badgeText: 'Configured',
+          badgeClass: 'text-purple-700 bg-purple-50 border border-purple-200',
+          hintText: 'Click to view Inventory Master →',
+          value: `${categories.length} Categories`,
+          onClick: () => handleCardClick('inventory'),
+        };
+      case 'totalMasterSkus':
+        return {
+          icon: Package,
+          iconBg: 'bg-neutral-100 text-neutral-800',
+          badgeText: 'Master Catalog',
+          badgeClass: 'text-neutral-700 bg-neutral-100 border border-neutral-200',
+          hintText: 'Click to view Master Catalog →',
+          value: `${items.length} SKUs`,
+          onClick: () => handleCardClick('inventory'),
+        };
+      case 'totalPhysicalUnits':
+        return {
+          icon: Layers,
+          iconBg: 'bg-indigo-50 text-indigo-600',
+          badgeText: 'Physical Units',
+          badgeClass: 'text-indigo-700 bg-indigo-50 border border-indigo-200',
+          hintText: 'Click to browse all physical units →',
+          value: `${totalPhysicalUnits} Units`,
+          onClick: () => handleCardClick('inventory'),
+        };
+      case 'setsAndBundles':
+        return {
+          icon: Boxes,
+          iconBg: 'bg-amber-50 text-amber-600',
+          badgeText: 'Kits & Sets',
+          badgeClass: 'text-amber-700 bg-amber-50 border border-amber-200',
+          hintText: 'Click to filter Sets & Bundles →',
+          value: `${setsAndBundlesCount} Bundles`,
+          onClick: () => handleCardClick('inventory'),
+        };
+      case 'pendingReturns':
+        return {
+          icon: Clock,
+          iconBg: 'bg-orange-50 text-orange-600',
+          badgeText: 'Needs Inspection',
+          badgeClass: 'text-orange-700 bg-orange-50 border border-orange-200',
+          hintText: 'Click to verify pending returns →',
+          value: `${pendingVerificationCount} Requests`,
+          onClick: () => handleCardClick('checkinout'),
+        };
+      case 'maintenanceDamaged':
+      case 'damagedMaintenance':
+        return {
+          icon: AlertCircle,
+          iconBg: 'bg-rose-50 text-rose-600',
+          badgeText: 'Attention Needed',
+          badgeClass: 'text-rose-700 bg-rose-50 border border-rose-200',
+          hintText: 'Click to inspect items →',
+          value: `${damagedOrMaintenanceItems.length} Items`,
+          onClick: () => handleCardClick('inventory'),
+        };
+      case 'activePurchaseOrders':
+        return {
+          icon: Building2,
+          iconBg: 'bg-cyan-50 text-cyan-600',
+          badgeText: 'Procurement',
+          badgeClass: 'text-cyan-700 bg-cyan-50 border border-cyan-200',
+          hintText: 'Click to view PO Analytics →',
+          value: `${activePurchaseOrdersCount} Orders`,
+          onClick: () => handleCardClick('analytics'),
+        };
+      case 'expiryAlerts':
+        return {
+          icon: CalendarClock,
+          iconBg: expirySummary.criticalCount > 0 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600',
+          badgeText:
+            expirySummary.expired.length > 0
+              ? `${expirySummary.expired.length} Expired`
+              : expirySummary.expiring1Month.length > 0
+              ? `${expirySummary.expiring1Month.length} ≤ 1 Mo`
+              : expirySummary.totalAlerts > 0
+              ? `${expirySummary.totalAlerts} Monitored`
+              : 'All Valid',
+          badgeClass:
+            expirySummary.expired.length > 0
+              ? 'text-red-700 bg-red-50 border border-red-200'
+              : expirySummary.expiring1Month.length > 0
+              ? 'text-rose-700 bg-rose-50 border border-rose-200'
+              : 'text-amber-700 bg-amber-50 border border-amber-200',
+          hintText: 'Click to inspect expiring supplies →',
+          value:
+            expirySummary.totalAlerts > 0
+              ? `${expirySummary.totalAlerts} Alert${expirySummary.totalAlerts === 1 ? '' : 's'}`
+              : '0 Alerts',
+          onClick: () => handleCardClick('inventory', 'ALL', 'EXPIRING_SOON'),
+        };
+      default:
+        return {
+          icon: Tag,
+          iconBg: 'bg-gray-100 text-gray-700',
+          badgeText: 'Monitored',
+          badgeClass: 'text-gray-700 bg-gray-100 border border-gray-200',
+          hintText: 'Click to view inventory →',
+          value: `0 ${card.unit_label || card.unitLabel || 'Items'}`,
+          onClick: () => handleCardClick('inventory'),
+        };
+    }
   };
 
-  const visibleMetricCards = METRIC_CARD_DEFINITIONS.filter(
-    (card) => activeMetricsConfig[card.id] === true
+  // Sorted dynamic metric cards from Supabase
+  const sortedMetricCards = [...dashboardMetricCards].sort(
+    (a, b) => (a.display_order ?? a.displayOrder ?? 0) - (b.display_order ?? b.displayOrder ?? 0)
   );
 
-  // Helper for modal metric updates
-  const setMetricCardEnabled = (metricId: keyof DashboardTopMetricsConfig, enabled: boolean) => {
-    const currentCards = {
-      ...DEFAULT_METRICS,
-      ...(tempWidgetConfig.metricCards || {}),
-    };
-    setTempWidgetConfig({
-      ...tempWidgetConfig,
-      metricCards: {
-        ...currentCards,
-        [metricId]: enabled,
-      },
-    });
+  const visibleMetricCards = sortedMetricCards.filter(
+    (card) => Boolean(card.is_displayed ?? card.isDisplayed)
+  );
+
+  // Helper for modal metric card toggle
+  const toggleTempMetricCard = (cardId: string, enabled: boolean) => {
+    setTempMetricCards((prev) =>
+      prev.map((c) => (c.id === cardId ? { ...c, is_displayed: enabled, isDisplayed: enabled } : c))
+    );
   };
 
   const applyMetricPreset = (preset: 'default' | 'all' | 'ops' | 'financial' | 'none') => {
-    let newCards: DashboardTopMetricsConfig;
-    if (preset === 'default') {
-      newCards = { ...DEFAULT_METRICS };
-    } else if (preset === 'all') {
-      newCards = {
-        totalValuation: true,
-        lowStockAlerts: true,
-        activeLoans: true,
-        categoriesCount: true,
-        totalMasterSkus: true,
-        totalPhysicalUnits: true,
-        setsAndBundles: true,
-        pendingReturns: true,
-        maintenanceDamaged: true,
-        activePurchaseOrders: true,
-      };
-    } else if (preset === 'ops') {
-      newCards = {
-        totalValuation: false,
-        lowStockAlerts: true,
-        activeLoans: true,
-        categoriesCount: true,
-        totalMasterSkus: true,
-        totalPhysicalUnits: true,
-        setsAndBundles: true,
-        pendingReturns: true,
-        maintenanceDamaged: true,
-        activePurchaseOrders: false,
-      };
-    } else if (preset === 'financial') {
-      newCards = {
-        totalValuation: true,
-        lowStockAlerts: true,
-        activeLoans: true,
-        categoriesCount: true,
-        totalMasterSkus: false,
-        totalPhysicalUnits: false,
-        setsAndBundles: false,
-        pendingReturns: false,
-        maintenanceDamaged: false,
-        activePurchaseOrders: true,
-      };
-    } else {
-      newCards = {
-        totalValuation: false,
-        lowStockAlerts: false,
-        activeLoans: false,
-        categoriesCount: false,
-        totalMasterSkus: false,
-        totalPhysicalUnits: false,
-        setsAndBundles: false,
-        pendingReturns: false,
-        maintenanceDamaged: false,
-        activePurchaseOrders: false,
-      };
-    }
+    setTempMetricCards((prev) =>
+      prev.map((card, idx) => {
+        let isDisplayed = false;
+        const key = card.card_key || card.cardKey;
+        const category = (card.category || '').toLowerCase();
 
-    setTempWidgetConfig({
-      ...tempWidgetConfig,
-      metricCards: newCards,
-    });
+        if (preset === 'default') {
+          isDisplayed = idx < 4 || key === 'expiryAlerts';
+        } else if (preset === 'all') {
+          isDisplayed = true;
+        } else if (preset === 'ops') {
+          isDisplayed = category.includes('operation') || category.includes('inventory') || category.includes('catalog');
+        } else if (preset === 'financial') {
+          isDisplayed = category.includes('financial') || key === 'totalValuation' || key === 'activePurchaseOrders';
+        } else if (preset === 'none') {
+          isDisplayed = false;
+        }
+
+        return { ...card, is_displayed: isDisplayed, isDisplayed: isDisplayed };
+      })
+    );
   };
 
-  const tempMetricsConfig = {
-    ...DEFAULT_METRICS,
-    ...(tempWidgetConfig.metricCards || {}),
-  };
-
-  const tempActiveCount = Object.values(tempMetricsConfig).filter(Boolean).length;
+  const tempActiveCount = tempMetricCards.filter((c) => Boolean(c.is_displayed ?? c.isDisplayed)).length;
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-6 py-6 space-y-6">
@@ -640,7 +571,7 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
                 Top Metric Cards
               </h3>
               <span className="text-[10px] font-bold text-gray-600 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full">
-                {visibleMetricCards.length} of {METRIC_CARD_DEFINITIONS.length} Active
+                {visibleMetricCards.length} of {sortedMetricCards.length} Active
               </span>
             </div>
 
@@ -648,6 +579,10 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
               <button
                 onClick={() => {
                   setTempWidgetConfig(dashboardConfig);
+                  const sorted = [...dashboardMetricCards].sort(
+                    (a, b) => (a.display_order ?? a.displayOrder ?? 0) - (b.display_order ?? b.displayOrder ?? 0)
+                  );
+                  setTempMetricCards(sorted);
                   setCustomizeModalTab('metrics');
                   setIsCustomizeModalOpen(true);
                 }}
@@ -684,11 +619,12 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
           ) : visibleMetricCards.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {visibleMetricCards.map((card) => {
-                const Icon = card.icon;
+                const runtime = getMetricCardRuntime(card);
+                const Icon = runtime.icon;
                 return (
                   <div
                     key={card.id}
-                    onClick={card.onClick}
+                    onClick={runtime.onClick}
                     className="bg-white border border-[#E5E5E5] hover:border-black cursor-pointer rounded-2xl p-5 shadow-sm transition group flex flex-col justify-between"
                   >
                     <div>
@@ -696,21 +632,21 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
                         <p className="text-xs text-gray-400 font-bold uppercase tracking-wider truncate pr-2">
                           {card.title}
                         </p>
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${card.iconBg}`}>
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${runtime.iconBg}`}>
                           <Icon className="w-3.5 h-3.5" />
                         </div>
                       </div>
                       <div className="flex items-baseline justify-between mt-1">
-                        <h3 className="text-2xl font-bold text-[#1A1A1A] tracking-tight">{card.getValue()}</h3>
-                        {card.badgeText && (
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${card.badgeClass}`}>
-                            {card.badgeText}
+                        <h3 className="text-2xl font-bold text-[#1A1A1A] tracking-tight">{runtime.value}</h3>
+                        {runtime.badgeText && (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${runtime.badgeClass}`}>
+                            {runtime.badgeText}
                           </span>
                         )}
                       </div>
                     </div>
                     <span className="text-[10px] text-gray-400 group-hover:text-black mt-3 block transition flex items-center justify-between">
-                      <span>{card.hintText}</span>
+                      <span>{runtime.hintText}</span>
                       <ChevronRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-black transition shrink-0" />
                     </span>
                   </div>
@@ -1026,7 +962,7 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
                 <DollarSign className="w-3.5 h-3.5" />
                 <span>Top Metric Cards</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-neutral-100 text-neutral-700">
-                  {tempActiveCount}/{METRIC_CARD_DEFINITIONS.length}
+                  {tempActiveCount}/{tempMetricCards.length}
                 </span>
               </button>
 
@@ -1063,7 +999,7 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
                         onClick={() => applyMetricPreset('all')}
                         className="px-2.5 py-1 rounded-lg bg-white border border-[#E5E5E5] hover:bg-gray-100 text-[#1A1A1A] font-bold text-[11px] transition cursor-pointer"
                       >
-                        Show All (10)
+                        Show All ({tempMetricCards.length})
                       </button>
                       <button
                         type="button"
@@ -1090,17 +1026,18 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
                   </div>
 
                   <p className="text-gray-500 text-xs">
-                    Select which KPI metric cards to display at the top of the dashboard. Click any card row to toggle visibility:
+                    Select which KPI metric cards to display at the top of the dashboard. Changes are saved universally to the database for all users:
                   </p>
 
-                  {/* Metric Cards List */}
+                  {/* Dynamic Database Metric Cards List */}
                   <div className="space-y-2.5">
-                    {METRIC_CARD_DEFINITIONS.map((def) => {
-                      const isEnabled = tempMetricsConfig[def.id] === true;
-                      const Icon = def.icon;
+                    {tempMetricCards.map((card) => {
+                      const isEnabled = Boolean(card.is_displayed ?? card.isDisplayed);
+                      const runtime = getMetricCardRuntime(card);
+                      const Icon = runtime.icon;
                       return (
                         <label
-                          key={def.id}
+                          key={card.id}
                           className={`flex items-center justify-between p-3.5 rounded-2xl border cursor-pointer transition ${
                             isEnabled
                               ? 'bg-white border-black shadow-xs ring-1 ring-black/5'
@@ -1111,25 +1048,25 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
                             <input
                               type="checkbox"
                               checked={isEnabled}
-                              onChange={(e) => setMetricCardEnabled(def.id, e.target.checked)}
+                              onChange={(e) => toggleTempMetricCard(card.id, e.target.checked)}
                               className="rounded border-gray-300 w-4 h-4 accent-black cursor-pointer shrink-0"
                             />
-                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${def.iconBg}`}>
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${runtime.iconBg}`}>
                               <Icon className="w-4 h-4" />
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="font-bold text-[#1A1A1A] text-xs truncate">{def.title}</span>
+                                <span className="font-bold text-[#1A1A1A] text-xs truncate">{card.title}</span>
                                 <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-                                  {def.category}
+                                  {card.category}
                                 </span>
                               </div>
-                              <p className="text-[11px] text-gray-500 truncate">{def.description}</p>
+                              <p className="text-[11px] text-gray-500 truncate">{card.description}</p>
                             </div>
                           </div>
 
                           <div className="text-right shrink-0 pl-3">
-                            <span className="font-bold text-[#1A1A1A] text-xs block font-mono">{def.getValue()}</span>
+                            <span className="font-bold text-[#1A1A1A] text-xs block font-mono">{runtime.value}</span>
                             <span className={`text-[10px] font-bold ${isEnabled ? 'text-green-600' : 'text-gray-400'}`}>
                               {isEnabled ? '✓ Displayed' : 'Hidden'}
                             </span>
@@ -1179,15 +1116,16 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
               <button
                 type="button"
                 onClick={() => {
+                  setTempMetricCards(DEFAULT_DASHBOARD_METRIC_CARDS);
                   setTempWidgetConfig({
                     showMetricCards: true,
-                    metricCards: DEFAULT_METRICS,
                     showQuickActions: true,
                     showLowStockAlerts: true,
                     showCategoryDistribution: true,
                     showRecentTransactions: true,
                     showHighValueItems: true,
                     showPendingReturnsBanner: true,
+                    showExpiryBanner: true,
                   });
                 }}
                 className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E5E5] hover:bg-gray-100 text-gray-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
@@ -1207,7 +1145,9 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
                 <button
                   type="button"
                   onClick={() => {
+                    updateDashboardMetricCards(tempMetricCards);
                     updateDashboardConfig(tempWidgetConfig);
+                    audioService.playSuccessSound();
                     setIsCustomizeModalOpen(false);
                   }}
                   className="px-5 py-2 bg-black hover:bg-neutral-800 text-white font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
