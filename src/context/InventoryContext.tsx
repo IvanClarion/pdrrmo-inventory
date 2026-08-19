@@ -242,7 +242,7 @@ interface InventoryContextType {
   hasPermission: (permission: keyof GranularPermissions) => boolean;
   addAuditLog: (action: string, details: string, severity?: 'info' | 'warning' | 'critical') => void;
   purgeAuditLogs: () => void;
-  wipeAllItems: () => void;
+  wipeAllItems: () => Promise<void>;
   resetToDefaultSeedData: () => void;
 }
 
@@ -2492,6 +2492,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       department: req.department,
       position: req.position,
       phone: req.contactNumber,
+      contactNumber: req.contactNumber,
+      contact_number: req.contactNumber,
       assignedLocationId: assignedLocationId || undefined,
       password: req.password || 'staff123',
       pin: req.pin || '1234',
@@ -2862,7 +2864,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     addAuditLog('AUDIT_LOGS_PURGED', 'System audit logs cleared by administrator.', 'critical');
   };
 
-  const wipeAllItems = () => {
+  const wipeAllItems = async (): Promise<void> => {
     setItems([]);
     setTransactions([]);
     setPendingCheckIns([]);
@@ -2871,8 +2873,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     safeSetJson(STORAGE_KEYS.ITEMS, []);
     safeSetJson(STORAGE_KEYS.TRANSACTIONS, []);
     safeSetJson(STORAGE_KEYS.PENDING_CHECKINS, []);
-    dbWipeAllItems().catch(() => {});
-    addAuditLog('INVENTORY_WIPED', 'All inventory items and transaction records were wiped by user.', 'warning');
+    await dbWipeAllItems();
+    await refreshItemsFromDatabase();
+    addAuditLog('INVENTORY_WIPED', 'All inventory items and transaction records were permanently wiped from database by user.', 'warning');
   };
 
   const resetToDefaultSeedData = () => {

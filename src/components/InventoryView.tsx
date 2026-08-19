@@ -62,6 +62,7 @@ export const InventoryView: React.FC = () => {
     selectedItemForDetail,
     setSelectedItemForDetail,
     isLoadingDatabase,
+    refreshItemsFromDatabase,
   } = useInventory();
 
   // Layout View Mode: 'table' | 'grid'
@@ -81,6 +82,7 @@ export const InventoryView: React.FC = () => {
   // In-App Confirmation Dialog States
   const [itemToDelete, setItemToDelete] = useState<Item | null>(null);
   const [isWipeModalOpen, setIsWipeModalOpen] = useState(false);
+  const [isWiping, setIsWiping] = useState(false);
   const [actionToast, setActionToast] = useState<string | null>(null);
   const [copiedSku, setCopiedSku] = useState<string | null>(null);
 
@@ -89,7 +91,7 @@ export const InventoryView: React.FC = () => {
   const [inlineForm, setInlineForm] = useState({
     name: '',
     sku: '',
-    quantity: 1,
+    quantity: 0,
     unitPrice: 0,
     manufacturerSerialNumber: '',
   });
@@ -123,13 +125,23 @@ export const InventoryView: React.FC = () => {
     }
   };
 
-  const handleConfirmWipeAll = () => {
-    const count = items.length;
-    wipeAllItems();
-    setIsWipeModalOpen(false);
-    setSelectedItemForDetail(null);
-    setIsAddModalOpen(false);
-    showToast(`Successfully wiped all ${count} items from inventory.`);
+  const handleConfirmWipeAll = async () => {
+    try {
+      setIsWiping(true);
+      const count = items.length;
+      await wipeAllItems();
+      if (refreshItemsFromDatabase) {
+        await refreshItemsFromDatabase();
+      }
+      setIsWipeModalOpen(false);
+      setSelectedItemForDetail(null);
+      setIsAddModalOpen(false);
+      showToast(`Successfully wiped all ${count} items from database.`);
+    } catch (err: any) {
+      alert(`Error wiping inventory: ${err?.message || err}`);
+    } finally {
+      setIsWiping(false);
+    }
   };
 
   // Inline Editing
@@ -1198,17 +1210,26 @@ export const InventoryView: React.FC = () => {
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
+                disabled={isWiping}
                 onClick={() => setIsWipeModalOpen(false)}
-                className="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl"
+                className="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl disabled:opacity-50 transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
+                disabled={isWiping}
                 onClick={handleConfirmWipeAll}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-xs"
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-xs disabled:opacity-50 transition cursor-pointer flex items-center gap-2"
               >
-                Yes, Wipe Everything
+                {isWiping ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
+                    <span>Wiping Database...</span>
+                  </>
+                ) : (
+                  <span>Yes, Wipe Everything</span>
+                )}
               </button>
             </div>
           </div>

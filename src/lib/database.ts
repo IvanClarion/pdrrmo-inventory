@@ -378,7 +378,7 @@ export function userToDb(u: User, passwordHash?: string, departments: Department
     department_id: deptId,
     department: u.department || (matchedDept ? matchedDept.name : null),
     position: u.roleName || u.position || null,
-    contact_number: u.phone || null,
+    contact_number: u.contactNumber || u.phone || u.contact_number || null,
     user_qr_code: generatedQr,
     pin: u.pin || '1234',
     status: 'ACTIVE',
@@ -419,6 +419,7 @@ export function dbToUser(row: any, roles: UserRole[] = [], departments: Departme
     (d) => d.id === row.department_id || d.id === row.department
   );
   const resolvedDept = matchedDept ? matchedDept.name : row.department || '';
+  const contactNum = row.contact_number || row.phone || '';
 
   return {
     id: row.id,
@@ -434,7 +435,9 @@ export function dbToUser(row: any, roles: UserRole[] = [], departments: Departme
     password: row.password_hash || defaultRolePassword,
     pin: row.pin || '1234',
     userQrCode: userQr,
-    phone: row.contact_number || row.phone,
+    phone: contactNum,
+    contactNumber: contactNum,
+    contact_number: contactNum,
     position: row.position,
   };
 }
@@ -1002,6 +1005,7 @@ export async function dbUpsertUser(user: User, passwordHash?: string, department
       password_hash: passwordHash || user.password || 'staff123',
       role_id: fullPayload.role_id,
       department_id: fullPayload.department_id,
+      contact_number: user.contactNumber || user.phone || (user as any).contact_number || null,
       assigned_location_id: user.assignedLocationId || null,
       avatar_url: user.avatarUrl || null,
     };

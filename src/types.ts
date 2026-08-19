@@ -38,6 +38,8 @@ export interface User {
   password?: string;
   pin?: string;
   phone?: string;
+  contactNumber?: string;
+  contact_number?: string;
   position?: string;
 }
 

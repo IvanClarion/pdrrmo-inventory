@@ -34,6 +34,7 @@ import {
   Users,
   AlertCircle,
   CheckCircle2,
+  Phone,
 } from 'lucide-react';
 
 export const AdminRBACView: React.FC = () => {
@@ -97,6 +98,7 @@ export const AdminRBACView: React.FC = () => {
     userQrCode: '',
     password: '',
     pin: '',
+    contactNumber: '',
   });
 
   // User search
@@ -241,6 +243,7 @@ export const AdminRBACView: React.FC = () => {
       userQrCode: `USR-QR-${Math.floor(10000 + Math.random() * 90000)}`,
       password: '',
       pin: '',
+      contactNumber: '',
     });
     setUserModalOpen(true);
   };
@@ -262,6 +265,7 @@ export const AdminRBACView: React.FC = () => {
       userQrCode: u.userQrCode || `USR-QR-${u.id.toUpperCase()}`,
       password: u.password || '',
       pin: u.pin || '',
+      contactNumber: u.contactNumber || u.phone || (u as any).contact_number || '',
     });
     setUserModalOpen(true);
   };
@@ -288,6 +292,8 @@ export const AdminRBACView: React.FC = () => {
         userQrCode: userForm.userQrCode.trim(),
         password: userForm.password.trim() || undefined,
         pin: userForm.pin.trim() || undefined,
+        contactNumber: userForm.contactNumber.trim() || undefined,
+        phone: userForm.contactNumber.trim() || undefined,
       });
     } else {
       addUser({
@@ -301,6 +307,8 @@ export const AdminRBACView: React.FC = () => {
         userQrCode: userForm.userQrCode.trim(),
         password: userForm.password.trim() || (roleName === 'Admin' ? 'admin123' : roleName === 'Inventory Manager' ? 'manager123' : roleName === 'Auditor' ? 'audit123' : 'staff123'),
         pin: userForm.pin.trim() || (roleName === 'Admin' ? '1234' : roleName === 'Inventory Manager' ? '2345' : '3456'),
+        contactNumber: userForm.contactNumber.trim() || undefined,
+        phone: userForm.contactNumber.trim() || undefined,
       });
     }
     setUserModalOpen(false);
@@ -686,6 +694,17 @@ export const AdminRBACView: React.FC = () => {
                               {u.userQrCode || `USR-QR-${u.id.toUpperCase()}`}
                             </span>
                           </div>
+                          {(u.contactNumber || u.phone || (u as any).contact_number) && (
+                            <div className="flex items-center justify-between text-[11px] pt-1 border-t border-[#E5E5E5]">
+                              <span className="text-gray-500 font-medium flex items-center gap-1">
+                                <Phone className="w-3 h-3 text-gray-400" />
+                                Contact:
+                              </span>
+                              <span className="font-semibold text-black text-[10px] truncate max-w-[130px]">
+                                {u.contactNumber || u.phone || (u as any).contact_number}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1362,15 +1381,29 @@ export const AdminRBACView: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="font-bold text-[#1A1A1A] block mb-1">Email Address *</label>
-                <input
-                  type="email"
-                  required
-                  value={userForm.email}
-                  onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#F5F5F5] border border-[#E5E5E5] rounded-xl text-xs font-medium focus:outline-none focus:border-black"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-[#1A1A1A] block mb-1">Email Address *</label>
+                  <input
+                    type="email"
+                    required
+                    value={userForm.email}
+                    onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                    placeholder="officer@pdrrmo.gov.ph"
+                    className="w-full px-3 py-2 bg-[#F5F5F5] border border-[#E5E5E5] rounded-xl text-xs font-medium focus:outline-none focus:border-black"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-[#1A1A1A] block mb-1">Contact Number</label>
+                  <input
+                    type="text"
+                    value={userForm.contactNumber}
+                    onChange={(e) => setUserForm({ ...userForm, contactNumber: e.target.value })}
+                    placeholder="+63 912 345 6789"
+                    className="w-full px-3 py-2 bg-[#F5F5F5] border border-[#E5E5E5] rounded-xl text-xs font-medium focus:outline-none focus:border-black"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
