@@ -1,41 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import { UserQRBadgeModal } from './UserQRBadgeModal';
 import { BrandLogo } from './BrandLogo';
 import { LogoCustomizer } from './LogoCustomizerModal';
 import { EditProfileModal } from './EditProfileModal';
 import {
-  Boxes,
-  Wifi,
-  WifiOff,
-  RefreshCw,
   ShieldCheck,
-  FileCode,
-  User,
-  RotateCcw,
   QrCode,
   Lock,
   Unlock,
   LogOut,
-  LogIn,
-  KeyRound,
   Palette,
-  Database,
   UserCog,
+  ChevronDown,
 } from 'lucide-react';
 
-export const Header: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModal }) => {
+export const Header: React.FC<{ onOpenPrdModal?: () => void }> = () => {
   const {
     currentUser,
     currentRole,
     users,
-    switchUser,
-    isOfflineMode,
-    toggleOfflineMode,
-    offlineQueue,
-    syncOfflineQueue,
     authenticatedUserId,
-    isSessionAuthenticated,
     openLoginModal,
     logoutUser,
     requiresAuth,
@@ -46,6 +31,8 @@ export const Header: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModa
   const [isQrBadgeOpen, setIsQrBadgeOpen] = useState(false);
   const [isLogoCustomizerOpen, setIsLogoCustomizerOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const isPrivileged = requiresAuth(currentUser);
   const isAuthenticated = !isPrivileged || authenticatedUserId === currentUser.id;
@@ -54,15 +41,27 @@ export const Header: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModa
     currentUser.roleName === 'Inventory Manager' ||
     currentRole.name === 'Inventory Manager';
 
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsProfileDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
   return (
     <header className="sticky top-0 z-30 bg-white text-[#1A1A1A] border-b border-[#E5E5E5] shadow-xs">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3 flex items-center justify-between gap-2">
-        {/* Brand Logo & Title */}
-        <div className="flex items-center gap-3">
-          <div className="relative group/logo">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2">
+        {/* Brand Logo & Organization Title */}
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="relative group/logo shrink-0">
             <BrandLogo branding={branding} size="md" />
             {isAdmin && (
               <button
+                type="button"
                 onClick={() => setIsLogoCustomizerOpen(true)}
                 className="absolute -bottom-1 -right-1 w-4 h-4 bg-black text-white rounded-full flex items-center justify-center opacity-0 group-hover/logo:opacity-100 transition shadow-sm cursor-pointer hover:bg-neutral-800"
                 title="Customize Organization Logo"
@@ -71,21 +70,22 @@ export const Header: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModa
               </button>
             )}
           </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <h1 className="font-bold tracking-tight text-base sm:text-lg text-[#1A1A1A]">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h1 className="font-bold tracking-tight text-sm sm:text-base text-[#1A1A1A] truncate max-w-[150px] sm:max-w-[280px]">
                 {branding.orgName || 'PDRRMO'}
               </h1>
               <span
-                className="text-[10px] uppercase font-extrabold px-1.5 py-0.5 rounded text-white"
+                className="text-[9px] sm:text-[10px] uppercase font-extrabold px-1.5 py-0.5 rounded text-white shrink-0"
                 style={{ backgroundColor: branding.badgeBgColor || '#000000' }}
               >
                 {branding.badgeText || 'INVENTORY'}
               </span>
               {isAdmin && (
                 <button
+                  type="button"
                   onClick={() => setIsLogoCustomizerOpen(true)}
-                  className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-black transition ml-1 px-1.5 py-0.5 rounded hover:bg-gray-100 cursor-pointer"
+                  className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-black transition px-1.5 py-0.5 rounded hover:bg-gray-100 cursor-pointer"
                   title="Customize Logo & Branding"
                 >
                   <Palette className="w-3 h-3 text-gray-500" />
@@ -93,124 +93,71 @@ export const Header: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModa
                 </button>
               )}
             </div>
-            <p className="text-[11px] text-gray-400 hidden sm:block font-medium">
+            <p className="text-[10px] sm:text-[11px] text-gray-400 hidden sm:block font-medium truncate max-w-[320px] lg:max-w-none">
               {branding.orgSubtitle || 'PDRRMO Inventory Management & Logistics Engine'}
             </p>
           </div>
         </div>
 
-        {/* User Role Switcher, Login & Action Controls */}
-        <div className="flex items-center gap-2">
-          {/* PRD Specs Button */}
+        {/* User Account & Profile Pill Dropdown */}
+        <div className="relative shrink-0" ref={dropdownRef}>
           <button
-            onClick={onOpenPrdModal}
-            className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-[#F5F5F5] hover:bg-[#EAEAEA] text-[#1A1A1A] border border-[#E5E5E5] transition cursor-pointer"
-            title="System Architecture & Database ERD"
+            type="button"
+            onClick={() => setIsProfileDropdownOpen((prev) => !prev)}
+            className="flex items-center gap-2 bg-[#F5F5F5] hover:bg-[#EAEAEA] border border-[#E5E5E5] px-2.5 sm:px-3 py-1.5 rounded-xl text-xs cursor-pointer transition select-none"
           >
-            <FileCode className="w-3.5 h-3.5 text-black" />
-            <span className="hidden md:inline">PRD & Specs</span>
-          </button>
-
-          {/* Offline Mode Toggle & Sync Status */}
-          <div className="flex items-center bg-[#F5F5F5] p-1 rounded-xl border border-[#E5E5E5]">
-            <button
-              onClick={toggleOfflineMode}
-              className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                isOfflineMode ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'text-green-700 bg-green-50'
-              }`}
-              title="Toggle Simulated Offline Mode"
-            >
-              {isOfflineMode ? (
-                <>
-                  <WifiOff className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Offline Mode</span>
-                </>
+            <div className="relative shrink-0">
+              {currentUser.avatarUrl ? (
+                <img
+                  src={currentUser.avatarUrl}
+                  alt={currentUser.name}
+                  className="w-6 h-6 rounded-full object-cover border border-black shrink-0"
+                />
               ) : (
-                <>
-                  <Wifi className="w-3.5 h-3.5 text-green-600" />
-                  <span className="hidden sm:inline">Online</span>
-                </>
+                <div className="w-6 h-6 rounded-full bg-orange-500 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
+                  {currentUser.name.split(' ').map((n) => n[0]).join('')}
+                </div>
               )}
-            </button>
-
-            {offlineQueue.length > 0 && (
-              <button
-                onClick={syncOfflineQueue}
-                className="flex items-center gap-1 text-xs font-bold px-2 py-1 ml-1 rounded-lg bg-black text-white animate-pulse hover:bg-neutral-800 cursor-pointer"
-                title="Sync offline queued changes now"
-              >
-                <RefreshCw className="w-3 h-3 animate-spin text-green-400" />
-                <span>{offlineQueue.length} Queue</span>
-              </button>
-            )}
-          </div>
-
-          {/* Live Supabase Cloud Database Status Badge */}
-          <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-bold" title="Connected to Supabase PostgreSQL Database">
-            <Database className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Supabase DB Live</span>
-          </div>
-
-          {/* Sign Out / Exit Session Button */}
-          <button
-            onClick={logoutUser}
-            className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-gray-100 hover:bg-red-50 hover:text-red-700 text-gray-700 border border-[#E5E5E5] transition cursor-pointer"
-            title="Log out of session and return to Login Screen"
-          >
-            <LogOut className="w-3.5 h-3.5 text-gray-500" />
-            <span className="hidden sm:inline">Sign Out</span>
+              {isPrivileged && (
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${
+                    isAuthenticated ? 'bg-emerald-500' : 'bg-amber-500'
+                  }`}
+                  title={isAuthenticated ? 'Logged in & verified' : 'Authentication required'}
+                />
+              )}
+            </div>
+            <div className="text-left hidden xs:block sm:block">
+              <div className="flex items-center gap-1">
+                <span className="font-bold text-[#1A1A1A] block truncate max-w-[90px] sm:max-w-[140px]">
+                  {currentUser.name}
+                </span>
+                {isPrivileged && (
+                  isAuthenticated ? (
+                    <ShieldCheck className="w-3 h-3 text-emerald-600 shrink-0" />
+                  ) : (
+                    <Lock className="w-3 h-3 text-amber-600 shrink-0" />
+                  )
+                )}
+              </div>
+              <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block -mt-0.5">
+                {currentRole.name}
+              </span>
+            </div>
+            <ChevronDown className="w-3.5 h-3.5 text-gray-400 hidden sm:block ml-0.5" />
           </button>
 
-          {/* Dynamic RBAC Role Switcher & Profile Dropdown */}
-          <div className="relative group">
-            <div className="flex items-center gap-2 bg-[#F5F5F5] hover:bg-[#EAEAEA] border border-[#E5E5E5] px-3 py-1.5 rounded-xl text-xs cursor-pointer transition">
-              <div className="relative">
-                {currentUser.avatarUrl ? (
-                  <img
-                    src={currentUser.avatarUrl}
-                    alt={currentUser.name}
-                    className="w-6 h-6 rounded-full object-cover border border-black shrink-0"
-                  />
-                ) : (
-                  <div className="w-6 h-6 rounded-full bg-orange-500 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
-                    {currentUser.name.split(' ').map((n) => n[0]).join('')}
-                  </div>
-                )}
-                {isPrivileged && (
-                  <span
-                    className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${
-                      isAuthenticated ? 'bg-emerald-500' : 'bg-amber-500'
-                    }`}
-                    title={isAuthenticated ? 'Logged in & verified' : 'Authentication required'}
-                  />
-                )}
-              </div>
-              <div className="text-left">
-                <div className="flex items-center gap-1">
-                  <span className="font-bold text-[#1A1A1A] block truncate max-w-[85px] sm:max-w-[120px]">
-                    {currentUser.name}
-                  </span>
-                  {isPrivileged && (
-                    isAuthenticated ? (
-                      <ShieldCheck className="w-3 h-3 text-emerald-600 shrink-0" />
-                    ) : (
-                      <Lock className="w-3 h-3 text-amber-600 shrink-0" />
-                    )
-                  )}
-                </div>
-                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block -mt-0.5">
-                  {currentRole.name}
-                </span>
-              </div>
-            </div>
-
-            {/* Role Switcher & Login Dropdown */}
-            <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-[#E5E5E5] rounded-2xl shadow-xl p-2.5 hidden group-hover:block z-50 animate-in fade-in zoom-in-95 duration-100">
+          {/* Role Switcher & Login Dropdown */}
+          {isProfileDropdownOpen && (
+            <div className="absolute right-0 top-full mt-1.5 w-72 bg-white border border-[#E5E5E5] rounded-2xl shadow-xl p-2.5 z-50 animate-in fade-in zoom-in-95 duration-100">
               <div className="px-2.5 py-1.5 border-b border-[#E5E5E5] mb-2 flex items-center justify-between">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Active Account & Auth</p>
+                <div>
+                  <p className="text-[11px] font-bold text-gray-800">{currentUser.name}</p>
+                  <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{currentRole.name}</p>
+                </div>
                 {isPrivileged && (
                   <span
-                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
                       isAuthenticated ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                     }`}
                   >
@@ -221,7 +168,11 @@ export const Header: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModa
 
               {/* Edit My Profile Button */}
               <button
-                onClick={() => setIsEditProfileOpen(true)}
+                type="button"
+                onClick={() => {
+                  setIsProfileDropdownOpen(false);
+                  setIsEditProfileOpen(true);
+                }}
                 className="w-full mb-1.5 p-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-xs flex items-center justify-center gap-1.5 transition shadow-xs cursor-pointer"
               >
                 <UserCog className="w-3.5 h-3.5" />
@@ -230,7 +181,11 @@ export const Header: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModa
 
               {/* View My QR Badge Button */}
               <button
-                onClick={() => setIsQrBadgeOpen(true)}
+                type="button"
+                onClick={() => {
+                  setIsProfileDropdownOpen(false);
+                  setIsQrBadgeOpen(true);
+                }}
                 className="w-full mb-1.5 p-2 rounded-xl bg-black hover:bg-neutral-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-xs cursor-pointer"
               >
                 <QrCode className="w-3.5 h-3.5 text-emerald-400" />
@@ -239,7 +194,11 @@ export const Header: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModa
 
               {/* Sign Out Action */}
               <button
-                onClick={logoutUser}
+                type="button"
+                onClick={() => {
+                  setIsProfileDropdownOpen(false);
+                  logoutUser();
+                }}
                 className="w-full mb-2 p-2 rounded-xl bg-gray-100 hover:bg-red-50 hover:text-red-700 text-gray-800 font-bold text-xs flex items-center justify-center gap-1.5 transition border border-[#E5E5E5] cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5 text-gray-500" />
@@ -254,7 +213,7 @@ export const Header: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModa
                     <span className="text-[9px] text-gray-400 font-mono">RBAC Auth</span>
                   </div>
 
-                  <div className="space-y-1 max-h-60 overflow-y-auto">
+                  <div className="space-y-1 max-h-52 overflow-y-auto">
                     {users.map((u) => {
                       const roleRequiresAuth = requiresAuth(u);
                       const isUserAuth = !roleRequiresAuth || authenticatedUserId === u.id;
@@ -263,29 +222,34 @@ export const Header: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModa
                       return (
                         <button
                           key={u.id}
+                          type="button"
                           onClick={() => {
+                            setIsProfileDropdownOpen(false);
                             if (!isCurrent) {
                               openLoginModal(u);
                             }
                           }}
-                          className={`w-full text-left px-2.5 py-2 rounded-xl text-xs flex items-center justify-between transition cursor-pointer ${
+                          className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between transition cursor-pointer ${
                             isCurrent
                               ? 'bg-[#F0F0F0] text-black font-bold border border-[#E5E5E5]'
                               : 'text-gray-600 hover:bg-[#F9F9F9]'
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <img
-                              src={
-                                u.avatarUrl ||
-                                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
-                              }
-                              alt={u.name}
-                              className="w-6 h-6 rounded-full object-cover border border-[#E5E5E5] shrink-0"
-                            />
+                            {u.avatarUrl ? (
+                              <img
+                                src={u.avatarUrl}
+                                alt={u.name}
+                                className="w-6 h-6 rounded-full object-cover border border-[#E5E5E5] shrink-0"
+                              />
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-orange-500 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
+                                {u.name.split(' ').map((n) => n[0]).join('').substring(0, 2)}
+                              </div>
+                            )}
                             <div className="min-w-0">
-                              <span className="block font-bold text-[#1A1A1A] truncate">{u.name}</span>
-                              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">
+                              <span className="block font-bold text-[#1A1A1A] truncate text-[11px]">{u.name}</span>
+                              <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">
                                 {u.roleName}
                               </span>
                             </div>
@@ -312,7 +276,7 @@ export const Header: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModa
                                 )}
                               </span>
                             )}
-                            {isCurrent && <ShieldCheck className="w-4 h-4 text-black shrink-0" />}
+                            {isCurrent && <ShieldCheck className="w-3.5 h-3.5 text-black shrink-0" />}
                           </div>
                         </button>
                       );
@@ -321,7 +285,7 @@ export const Header: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpenPrdModa
                 </>
               )}
             </div>
-          </div>
+          )}
         </div>
       </div>
 

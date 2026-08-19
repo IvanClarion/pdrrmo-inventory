@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import { ProfilePhotoUploadInput } from './ProfilePhotoUploadInput';
 import { audioService } from '../utils/audio';
@@ -98,19 +98,19 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
     setIsSubmitting(true);
 
     try {
-      editUser(currentUser.id, {
+      await editUser(currentUser.id, {
         name: cleanName,
         email: cleanEmail,
         department: finalDepartment,
-        position: position.trim() || undefined,
-        contactNumber: contactNumber.trim() || undefined,
-        phone: contactNumber.trim() || undefined,
-        contact_number: contactNumber.trim() || undefined,
+        position: position.trim(),
+        contactNumber: contactNumber.trim(),
+        phone: contactNumber.trim(),
+        contact_number: contactNumber.trim(),
         password: password.trim() || undefined,
         pin: pin.trim() || undefined,
         quick_pin: pin.trim() || undefined,
         quickPin: pin.trim() || undefined,
-        avatarUrl: avatarUrl.trim() || undefined,
+        avatarUrl: avatarUrl.trim(),
       });
 
       audioService.playSuccessSound();
@@ -119,7 +119,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
       setTimeout(() => {
         setIsSubmitting(false);
         onClose();
-      }, 1200);
+      }, 1000);
     } catch (err: any) {
       console.error('Error updating profile:', err);
       setErrorMessage(err?.message || 'Failed to update profile.');

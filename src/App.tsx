@@ -1,24 +1,20 @@
 import React, { useState } from 'react';
 import { InventoryProvider, useInventory } from './context/InventoryContext';
+import { ProcurementProvider } from './procurement/ProcurementContext';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
-import { DashboardView } from './components/DashboardView';
-import { ScannerView } from './components/ScannerView';
-import { InventoryView } from './components/InventoryView';
-import { CheckInOutView } from './components/CheckInOutView';
-import { CheckInOutModal } from './components/CheckInOutModal';
-import { LabelGeneratorModal } from './components/LabelGeneratorModal';
-import { AuditLogsView } from './components/AuditLogsView';
-import { AnalyticsView } from './components/AnalyticsView';
+import { InventoryModuleView } from './components/InventoryModuleView';
 import { AdminRBACView } from './components/AdminRBACView';
 import { PRDAndSchemaModal } from './components/PRDAndSchemaModal';
 import { CheckOutFormModal } from './components/CheckOutFormModal';
+import { CheckInOutModal } from './components/CheckInOutModal';
 import { LoginModal } from './components/LoginModal';
 import { LoginPage } from './components/LoginPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ProcurementModuleView } from './procurement/ProcurementModuleView';
 
 const AppContent: React.FC = () => {
-  const { isSessionAuthenticated, activeTab, activeCheckoutFormData, closeCheckoutFormModal } = useInventory();
+  const { isSessionAuthenticated, mainTab, activeCheckoutFormData, closeCheckoutFormModal } = useInventory();
   const [isPrdModalOpen, setIsPrdModalOpen] = useState<boolean>(false);
 
   // If user is not authenticated, display the full-screen Login Page
@@ -36,19 +32,14 @@ const AppContent: React.FC = () => {
       {/* Top Application Header */}
       <Header onOpenPrdModal={() => setIsPrdModalOpen(true)} />
 
-      {/* Navigation Sub-Header (Desktop) */}
+      {/* Top-Level Main Navigation (Inventory | Procurement | Admin & RBAC) */}
       <BottomNav />
 
-      {/* Main Screen Router */}
+      {/* Main Screen Router for 3 Core Modules */}
       <main className="flex-1 overflow-x-hidden">
-        {activeTab === 'dashboard' && <DashboardView onOpenPrdModal={() => setIsPrdModalOpen(true)} />}
-        {activeTab === 'scanner' && <ScannerView />}
-        {activeTab === 'inventory' && <InventoryView />}
-        {activeTab === 'checkinout' && <CheckInOutView />}
-        {activeTab === 'labels' && <LabelGeneratorModal />}
-        {activeTab === 'analytics' && <AnalyticsView />}
-        {activeTab === 'logs' && <AuditLogsView />}
-        {activeTab === 'admin' && <AdminRBACView />}
+        {mainTab === 'inventory' && <InventoryModuleView onOpenPrdModal={() => setIsPrdModalOpen(true)} />}
+        {mainTab === 'procurement' && <ProcurementModuleView />}
+        {mainTab === 'admin' && <AdminRBACView />}
       </main>
 
       {/* Check In / Out Modal Drawer */}
@@ -74,7 +65,9 @@ export default function App() {
   return (
     <ErrorBoundary>
       <InventoryProvider>
-        <AppContent />
+        <ProcurementProvider>
+          <AppContent />
+        </ProcurementProvider>
       </InventoryProvider>
     </ErrorBoundary>
   );

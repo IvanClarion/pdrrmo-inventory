@@ -141,14 +141,17 @@ export const PersonSelectorInput: React.FC<PersonSelectorInputProps> = ({
       {matchedUser && (
         <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between gap-3 text-xs animate-fade-in">
           <div className="flex items-center gap-2.5 min-w-0">
-            <img
-              src={
-                matchedUser.avatarUrl ||
-                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
-              }
-              alt={matchedUser.name}
-              className="w-8 h-8 rounded-full object-cover border border-emerald-400 shrink-0"
-            />
+            {matchedUser.avatarUrl ? (
+              <img
+                src={matchedUser.avatarUrl}
+                alt={matchedUser.name}
+                className="w-8 h-8 rounded-full object-cover border border-emerald-400 shrink-0"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-orange-500 text-white font-bold text-xs flex items-center justify-center border border-emerald-400 shrink-0">
+                {matchedUser.name.split(' ').map((n) => n[0]).join('').substring(0, 2)}
+              </div>
+            )}
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="font-bold text-black truncate">{matchedUser.name}</span>

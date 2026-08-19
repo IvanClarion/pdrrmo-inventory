@@ -124,26 +124,30 @@ export const UserQRBadgeModal: React.FC<UserQRBadgeModalProps> = ({ user, isOpen
       const avatarCenterY = 200;
       const avatarRadius = 65;
 
-      const avatarSrc =
-        user.avatarUrl ||
-        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+      let hasDrawnPhoto = false;
+      if (user.avatarUrl) {
+        try {
+          const avatarImg = await loadImage(user.avatarUrl);
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(avatarCenterX, avatarCenterY, avatarRadius, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.clip();
+          ctx.drawImage(
+            avatarImg,
+            avatarCenterX - avatarRadius,
+            avatarCenterY - avatarRadius,
+            avatarRadius * 2,
+            avatarRadius * 2
+          );
+          ctx.restore();
+          hasDrawnPhoto = true;
+        } catch {
+          hasDrawnPhoto = false;
+        }
+      }
 
-      try {
-        const avatarImg = await loadImage(avatarSrc);
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(avatarCenterX, avatarCenterY, avatarRadius, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
-        ctx.drawImage(
-          avatarImg,
-          avatarCenterX - avatarRadius,
-          avatarCenterY - avatarRadius,
-          avatarRadius * 2,
-          avatarRadius * 2
-        );
-        ctx.restore();
-      } catch {
+      if (!hasDrawnPhoto) {
         ctx.fillStyle = '#0F172A';
         ctx.beginPath();
         ctx.arc(avatarCenterX, avatarCenterY, avatarRadius, 0, Math.PI * 2);
@@ -271,9 +275,10 @@ export const UserQRBadgeModal: React.FC<UserQRBadgeModalProps> = ({ user, isOpen
       });
 
       const logoUrl = branding.customLogoUrl || '/assets/logo/logo.jpg';
-      const avatarSrc =
-        user.avatarUrl ||
-        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+      const initials = user.name.split(' ').map((n) => n[0]).join('').substring(0, 2);
+      const avatarHtml = user.avatarUrl
+        ? `<img src="${user.avatarUrl}" alt="${user.name}" class="avatar-img" />`
+        : `<div class="avatar-img" style="display:inline-flex;align-items:center;justify-content:center;background:#0f172a;color:#ffffff;font-size:24px;font-weight:900;line-height:72px;">${initials}</div>`;
 
       // Create isolated hidden iframe for clean printing
       const existingFrame = document.getElementById('user-badge-print-iframe');
@@ -315,12 +320,11 @@ export const UserQRBadgeModal: React.FC<UserQRBadgeModalProps> = ({ user, isOpen
               display: flex;
               align-items: center;
               justify-content: center;
-              min-height: 100vh;
-              background-color: #f8fafc;
               padding: 20px;
+              background: #f1f5f9;
             }
             .badge-card {
-              width: 340px;
+              width: 320px;
               background: #ffffff;
               border: 2px solid #0f172a;
               border-radius: 24px;
@@ -456,7 +460,7 @@ export const UserQRBadgeModal: React.FC<UserQRBadgeModalProps> = ({ user, isOpen
             </div>
 
             <div class="avatar-wrap">
-              <img src="${avatarSrc}" alt="${user.name}" class="avatar-img" />
+              ${avatarHtml}
             </div>
 
             <div class="user-name">${user.name}</div>
@@ -539,14 +543,17 @@ export const UserQRBadgeModal: React.FC<UserQRBadgeModalProps> = ({ user, isOpen
             {/* Avatar & Name */}
             <div className="flex flex-col items-center gap-2 pt-1">
               <div className="relative group cursor-pointer" onClick={() => setIsEditingPhoto(!isEditingPhoto)}>
-                <img
-                  src={
-                    user.avatarUrl ||
-                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
-                  }
-                  alt={user.name}
-                  className="w-16 h-16 rounded-full object-cover border-2 border-black shadow-xs group-hover:opacity-90 transition"
-                />
+                {user.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt={user.name}
+                    className="w-16 h-16 rounded-full object-cover border-2 border-black shadow-xs group-hover:opacity-90 transition"
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-orange-500 text-white font-bold text-lg flex items-center justify-center border-2 border-black shadow-xs group-hover:opacity-90 transition">
+                    {user.name.split(' ').map((n) => n[0]).join('').substring(0, 2)}
+                  </div>
+                )}
                 <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-black text-white border-2 border-white flex items-center justify-center shadow-xs">
                   <Camera className="w-3 h-3 text-emerald-400" />
                 </div>

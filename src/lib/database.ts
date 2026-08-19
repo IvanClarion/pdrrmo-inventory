@@ -379,14 +379,14 @@ export function userToDb(u: User, passwordHash?: string, departments: Department
     role_id: roleId || 'role-staff',
     department_id: deptId,
     department: u.department || (matchedDept ? matchedDept.name : null),
-    position: u.roleName || u.position || null,
+    position: u.position || u.roleName || null,
     contact_number: u.contactNumber || u.phone || u.contact_number || null,
     user_qr_code: generatedQr,
     pin: userPin,
     quick_pin: userPin,
     status: 'ACTIVE',
     assigned_location_id: u.assignedLocationId || null,
-    avatar_url: u.avatarUrl || null,
+    avatar_url: u.avatarUrl && u.avatarUrl.trim() ? u.avatarUrl.trim() : null,
   };
 }
 
@@ -442,9 +442,7 @@ export function dbToUser(row: any, roles: UserRole[] = [], departments: Departme
     roleName: roleName,
     department: resolvedDept,
     assignedLocationId: row.assigned_location_id || undefined,
-    avatarUrl:
-      row.avatar_url ||
-      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
+    avatarUrl: row.avatar_url || '',
     password: row.password_hash || defaultRolePassword,
     pin: resolvedPin,
     quick_pin: resolvedPin,
@@ -453,7 +451,7 @@ export function dbToUser(row: any, roles: UserRole[] = [], departments: Departme
     phone: contactNum,
     contactNumber: contactNum,
     contact_number: contactNum,
-    position: row.position,
+    position: row.position || (matchedRole ? matchedRole.name : roleName),
   };
 }
 

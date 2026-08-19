@@ -143,6 +143,10 @@ interface InventoryContextType {
   deleteDepartment: (id: string) => { success: boolean; error?: string };
   resetDepartmentsToDefault: () => void;
 
+  mainTab: 'inventory' | 'procurement' | 'admin';
+  setMainTab: (tab: 'inventory' | 'procurement' | 'admin') => void;
+  inventorySubTab: string;
+  setInventorySubTab: (subTab: string) => void;
   activeTab: string;
   setActiveTab: (tab: string) => void;
   isTabAccessible: (tabId: string, roleName?: string) => boolean;
@@ -334,8 +338,10 @@ function safeGetJson<T>(key: string, fallback: T): T {
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
 
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Active Tab navigation
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  // Top-Level Main Module ('inventory' | 'procurement' | 'admin')
+  const [mainTab, setMainTab] = useState<'inventory' | 'procurement' | 'admin'>('inventory');
+  // Sub-tabs for Inventory Module ('dashboard', 'scanner', 'inventory', 'checkinout', 'labels', 'analytics', 'logs')
+  const [inventorySubTab, setInventorySubTab] = useState<string>('dashboard');
   
   // Modals state
   const [selectedItemForDetail, setSelectedItemForDetail] = useState<Item | null>(null);
@@ -708,23 +714,82 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (tabId === 'logs') {
       return targetRole !== 'Staff';
     }
+    if (tabId === 'procurement') {
+      if (targetRole === 'Admin' || hasPermission('canManageRoles')) return true;
+      try {
+        const raw = localStorage.getItem('pdrrmo_procurement_user_access_v1');
+        if (raw) {
+          const list = JSON.parse(raw);
+          const found = list.find(
+            (a: any) => a.userId === currentUser?.id || a.userEmail?.toLowerCase() === currentUser?.email?.toLowerCase()
+          );
+          if (found) return Boolean(found.hasAccess);
+        }
+      } catch (e) {}
+      return targetRole === 'Inventory Manager';
+    }
     return true;
   };
 
-  const setActiveTabGuarded = (tab: string) => {
+  const INVENTORY_SUB_TABS = ['dashboard', 'scanner', 'inventory', 'checkinout', 'labels', 'analytics', 'logs'];
+
+  const setMainTabGuarded = (tab: 'inventory' | 'procurement' | 'admin') => {
     if (!isTabAccessible(tab)) {
-      setActiveTab(getDefaultAccessibleTab());
+      setMainTab('inventory');
       return;
     }
-    setActiveTab(tab);
+    setMainTab(tab);
   };
+
+  const setInventorySubTabGuarded = (subTab: string) => {
+    if (!isTabAccessible(subTab)) {
+      setInventorySubTab(getDefaultAccessibleTab());
+      return;
+    }
+    setInventorySubTab(subTab);
+  };
+
+  const setActiveTabGuarded = (tab: string) => {
+    if (tab === 'procurement') {
+      setMainTabGuarded('procurement');
+      return;
+    }
+    if (tab === 'admin') {
+      setMainTabGuarded('admin');
+      return;
+    }
+    if (tab === 'inventory') {
+      setMainTab('inventory');
+      if (!isTabAccessible(inventorySubTab)) {
+        setInventorySubTab(getDefaultAccessibleTab());
+      }
+      return;
+    }
+    if (INVENTORY_SUB_TABS.includes(tab)) {
+      setMainTab('inventory');
+      setInventorySubTabGuarded(tab);
+      return;
+    }
+    if (isTabAccessible(tab)) {
+      setInventorySubTab(tab);
+    }
+  };
+
+  const activeTab = mainTab === 'inventory' ? inventorySubTab : mainTab;
+  const setActiveTab = setActiveTabGuarded;
 
   // Fallback if role changes and active tab becomes forbidden
   useEffect(() => {
-    if (!isTabAccessible(activeTab)) {
-      setActiveTab(getDefaultAccessibleTab());
+    if (mainTab === 'admin' && !isTabAccessible('admin')) {
+      setMainTab('inventory');
     }
-  }, [currentUser, currentRole, activeTab]);
+    if (mainTab === 'procurement' && !isTabAccessible('procurement')) {
+      setMainTab('inventory');
+    }
+    if (!isTabAccessible(inventorySubTab)) {
+      setInventorySubTab(getDefaultAccessibleTab());
+    }
+  }, [currentUser, currentRole, mainTab, inventorySubTab]);
 
   // Persist State Updates
   useEffect(() => {
@@ -1543,8 +1608,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               sbUser.user_metadata?.department ||
               departments[0]?.name ||
               'Disaster Emergency Response',
-            avatarUrl:
-              'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
+            avatarUrl: sbUser.user_metadata?.avatar_url || '',
           };
 
           setUsers((prev) => [newUser, ...prev]);
@@ -2509,9 +2573,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       password: effectivePassword,
       roleName: targetRole ? targetRole.name : userData.roleName,
       userQrCode: userData.userQrCode || `USR-QR-${Math.floor(10000 + Math.random() * 90000)}`,
-      avatarUrl:
-        userData.avatarUrl ||
-        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      avatarUrl: userData.avatarUrl || '',
     };
     
     setUsers((prev) => {
@@ -2532,8 +2594,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return newUser;
   };
 
-  const editUser = (id: string, updates: Partial<User>) => {
+  const editUser = async (id: string, updates: Partial<User>) => {
     const cleanId = String(id).trim();
+
+    let targetUpdatedUser: User | null = null;
 
     setUsers((prevUsers) => {
       const existing = prevUsers.find(
@@ -2557,7 +2621,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (r) updatedRoleName = r.name;
       }
 
-      // Filter out undefined values from updates so we don't clobber existing properties
+      // Filter out undefined values from updates so we don't clobber existing properties, but allow empty strings (e.g. avatarUrl: '')
       const cleanUpdates: Partial<User> = {};
       (Object.keys(updates) as (keyof User)[]).forEach((k) => {
         if (updates[k] !== undefined) {
@@ -2571,6 +2635,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         roleName: updatedRoleName,
         roleId: updates.roleId || existing.roleId,
       };
+
+      targetUpdatedUser = updatedUser;
 
       // Persist to Supabase asynchronously with department matching
       dbUpsertUser(updatedUser, updatedUser.password, departments).catch((err) => {
@@ -2601,6 +2667,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       safeSetJson(STORAGE_KEYS.USERS, nextList);
       return nextList;
     });
+
+    if (targetUpdatedUser) {
+      await dbUpsertUser(targetUpdatedUser, (targetUpdatedUser as User).password, departments);
+    }
   };
 
   const deleteUser = (id: string) => {
@@ -2732,7 +2802,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       quick_pin: effectivePin,
       quickPin: effectivePin,
       userQrCode: generatedQrCode,
-      avatarUrl: req.avatarUrl || req.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+      avatarUrl: req.avatarUrl || req.avatar_url || '',
     };
 
     setUsers((prev) => {
@@ -3173,7 +3243,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         branding,
         updateBranding,
         resetBrandingToDefault,
-        activeTab,
+        mainTab,
+        setMainTab: setMainTabGuarded,
+        inventorySubTab,
+        setInventorySubTab: setInventorySubTabGuarded,
+        activeTab: mainTab === 'inventory' ? inventorySubTab : mainTab,
         setActiveTab: setActiveTabGuarded,
         isTabAccessible,
         inventoryCategoryFilter,

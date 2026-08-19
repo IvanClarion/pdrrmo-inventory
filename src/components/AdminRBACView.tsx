@@ -289,7 +289,7 @@ export const AdminRBACView: React.FC = () => {
         roleName: roleName as any,
         department: userForm.department.trim(),
         assignedLocationId: userForm.assignedLocationId || undefined,
-        avatarUrl: userForm.avatarUrl || undefined,
+        avatarUrl: userForm.avatarUrl.trim(),
         userQrCode: userForm.userQrCode.trim(),
         password: userForm.password.trim() || undefined,
         pin: userForm.pin.trim() || undefined,
@@ -307,7 +307,7 @@ export const AdminRBACView: React.FC = () => {
         roleName: roleName as any,
         department: userForm.department.trim(),
         assignedLocationId: userForm.assignedLocationId || undefined,
-        avatarUrl: userForm.avatarUrl || undefined,
+        avatarUrl: userForm.avatarUrl.trim(),
         userQrCode: userForm.userQrCode.trim(),
         password: userForm.password.trim() || (roleName === 'Admin' ? 'admin123' : roleName === 'Inventory Manager' ? 'manager123' : roleName === 'Auditor' ? 'audit123' : 'staff123'),
         pin: defaultPin,
@@ -651,14 +651,17 @@ export const AdminRBACView: React.FC = () => {
                     <div className="space-y-3">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-3">
-                          <img
-                            src={
-                              u.avatarUrl ||
-                              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
-                            }
-                            alt={u.name}
-                            className="w-11 h-11 rounded-full object-cover border-2 border-black shrink-0"
-                          />
+                          {u.avatarUrl ? (
+                            <img
+                              src={u.avatarUrl}
+                              alt={u.name}
+                              className="w-11 h-11 rounded-full object-cover border-2 border-black shrink-0"
+                            />
+                          ) : (
+                            <div className="w-11 h-11 rounded-full bg-orange-500 text-white font-bold text-sm flex items-center justify-center border-2 border-black shrink-0 shadow-xs">
+                              {u.name.split(' ').map((n) => n[0]).join('').substring(0, 2)}
+                            </div>
+                          )}
                           <div>
                             <h4 className="font-bold text-[#1A1A1A] text-sm leading-tight">{u.name}</h4>
                             <span className="text-[10px] text-gray-500 font-medium block truncate max-w-[130px]">{u.email}</span>

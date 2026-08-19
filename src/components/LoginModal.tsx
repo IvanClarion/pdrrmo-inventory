@@ -149,14 +149,17 @@ export const LoginModal: React.FC = () => {
           {/* Target Account Badge */}
           <div className="p-3.5 bg-[#F9F9F9] border border-[#E5E5E5] rounded-2xl flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <img
-                src={
-                  liveUser.avatarUrl ||
-                  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
-                }
-                alt={liveUser.name}
-                className="w-11 h-11 rounded-full object-cover border-2 border-black shrink-0 shadow-xs"
-              />
+              {liveUser.avatarUrl ? (
+                <img
+                  src={liveUser.avatarUrl}
+                  alt={liveUser.name}
+                  className="w-11 h-11 rounded-full object-cover border-2 border-black shrink-0 shadow-xs"
+                />
+              ) : (
+                <div className="w-11 h-11 rounded-full bg-orange-500 text-white font-bold text-sm flex items-center justify-center border-2 border-black shrink-0 shadow-xs">
+                  {liveUser.name.split(' ').map((n) => n[0]).join('').substring(0, 2)}
+                </div>
+              )}
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <h4 className="font-bold text-sm text-[#1A1A1A] truncate">{liveUser.name}</h4>
