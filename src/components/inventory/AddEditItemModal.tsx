@@ -557,18 +557,18 @@ export const AddEditItemModal: React.FC<AddEditItemModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white border border-[#E5E5E5] rounded-2xl w-full max-w-3xl my-8 overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-white border border-[#E5E5E5] rounded-2xl w-full max-w-3xl my-4 sm:my-8 overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E5E5] bg-gray-50/70">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center font-bold text-base shadow-xs">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-[#E5E5E5] bg-gray-50/70">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-black text-white flex items-center justify-center font-bold text-sm sm:text-base shadow-xs shrink-0">
               {editingItem ? '✎' : '+'}
             </div>
-            <div>
-              <h3 className="text-base sm:text-lg font-bold text-[#1A1A1A]">
-                {editingItem ? `Edit Inventory Item: ${editingItem.name}` : 'Add New Inventory Item'}
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-lg font-bold text-[#1A1A1A] truncate">
+                {editingItem ? `Edit Item: ${editingItem.name}` : 'Add New Inventory Item'}
               </h3>
-              <p className="text-xs text-gray-500 font-normal">
+              <p className="text-[11px] sm:text-xs text-gray-500 font-normal truncate">
                 {editingItem
                   ? 'Customize stock details, photo, price, barcodes, and thresholds'
                   : 'Register items with dedicated SKU, scannable Barcode, and high-res photo'}
@@ -577,15 +577,15 @@ export const AddEditItemModal: React.FC<AddEditItemModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-black rounded-lg hover:bg-gray-100 transition cursor-pointer"
+            className="p-1.5 sm:p-2 text-gray-400 hover:text-black rounded-lg hover:bg-gray-100 transition cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[82vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 max-h-[82vh] overflow-y-auto">
           {/* Top Section: Photo Selector & Live Barcode Preview */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 bg-gray-50/60 rounded-2xl border border-[#E5E5E5]">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 p-3 sm:p-4 bg-gray-50/60 rounded-2xl border border-[#E5E5E5]">
             {/* Photo Preview & Controls */}
             <div className="flex flex-col items-center justify-center space-y-3">
               <div className="relative w-36 h-36 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-gray-200">
@@ -641,7 +641,7 @@ export const AddEditItemModal: React.FC<AddEditItemModalProps> = ({
                   <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1.5">
                     Choose from Preset Equipment Photos
                   </label>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {PRESET_PHOTOS.map((photo) => (
                       <button
                         key={photo.label}

@@ -39,7 +39,7 @@ export const InventoryModuleView: React.FC<{ onOpenPrdModal: () => void }> = ({ 
   const visibleSubTabs = INVENTORY_SUB_NAV_ITEMS.filter((item) => isTabAccessible(item.id));
 
   return (
-    <div className="grid gap-2.5 p-2 sm:p-4 max-w-7xl mx-auto w-full">
+    <div className="grid gap-2.5 p-2 sm:p-4 max-w-7xl mx-auto w-full min-w-0">
       {/* Inventory Module Sub-Navigation Toolbar (Grid-based spacing, zero margin waste, mobile responsive) */}
       <div className="bg-white border border-[#E5E5E5] rounded-2xl p-1 shadow-2xs">
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-1">
@@ -69,7 +69,7 @@ export const InventoryModuleView: React.FC<{ onOpenPrdModal: () => void }> = ({ 
       </div>
 
       {/* Main Inventory Sub-View Router */}
-      <div className="grid w-full">
+      <div className="grid w-full min-w-0">
         {inventorySubTab === 'dashboard' && <DashboardView onOpenPrdModal={onOpenPrdModal} />}
         {inventorySubTab === 'scanner' && <ScannerView />}
         {inventorySubTab === 'inventory' && <InventoryView />}

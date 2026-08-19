@@ -57,23 +57,23 @@ export const AuditLogsView: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-6 py-6 space-y-6">
+    <div className="max-w-7xl mx-auto px-2 sm:px-6 py-4 sm:py-6 space-y-6 w-full min-w-0">
       {/* Header Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h2 className="text-xl font-bold text-[#1A1A1A] flex items-center gap-2">
-            <History className="w-6 h-6 text-black" />
+          <h2 className="text-lg sm:text-xl font-bold text-[#1A1A1A] flex items-center gap-2 tracking-tight">
+            <History className="w-5 h-5 sm:w-6 sm:h-6 text-black shrink-0" />
             <span>Immutable Audit Trail & Activity Logs</span>
           </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">
             Real-time compliance ledger recording every check-in, check-out, adjustment, and permission change.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={exportLogsToCsv}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-[#F5F5F5] text-[#1A1A1A] border border-[#E5E5E5] text-xs font-bold transition shadow-xs"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-[#F5F5F5] text-[#1A1A1A] border border-[#E5E5E5] text-xs font-bold transition shadow-xs cursor-pointer"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
             <span>Export CSV</span>
@@ -86,7 +86,7 @@ export const AuditLogsView: React.FC = () => {
                   purgeAuditLogs();
                 }
               }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold transition"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold transition cursor-pointer"
             >
               <Trash2 className="w-4 h-4" />
               <span>Purge Audit Log</span>
@@ -96,24 +96,24 @@ export const AuditLogsView: React.FC = () => {
       </div>
 
       {/* Search & Severity Filter */}
-      <div className="bg-white border border-[#E5E5E5] rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row gap-3">
+      <div className="bg-white border border-[#E5E5E5] rounded-2xl p-3.5 sm:p-4 shadow-sm flex flex-col sm:flex-row gap-2.5 sm:gap-3">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
           <input
             type="text"
+            placeholder="Search action, user name, or detail keyword..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Filter by user, action type, or details..."
-            className="w-full pl-9 pr-3 py-2 bg-[#F5F5F5] border border-[#E5E5E5] rounded-xl text-xs text-[#1A1A1A] placeholder-gray-400 focus:outline-none focus:border-black font-medium"
+            className="w-full pl-9 pr-3 py-2 bg-[#F9F9F9] border border-[#E5E5E5] rounded-xl text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-black"
           />
         </div>
 
         <select
           value={severityFilter}
           onChange={(e) => setSeverityFilter(e.target.value)}
-          className="px-3 py-2 bg-[#F5F5F5] border border-[#E5E5E5] rounded-xl text-xs text-[#1A1A1A] font-medium focus:outline-none focus:border-black"
+          className="px-3 py-2 bg-[#F9F9F9] border border-[#E5E5E5] rounded-xl text-xs font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-black cursor-pointer"
         >
-          <option value="ALL">All Severity Levels</option>
+          <option value="ALL">All Severities</option>
           <option value="info">Info</option>
           <option value="warning">Warning</option>
           <option value="critical">Critical</option>
@@ -121,17 +121,18 @@ export const AuditLogsView: React.FC = () => {
       </div>
 
       {/* Audit Log Table */}
-      <div className="bg-white border border-[#E5E5E5] rounded-2xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
+      <div className="w-full max-w-full min-w-0 bg-white border border-[#E5E5E5] rounded-2xl shadow-sm overflow-hidden">
+        {/* Scrollable table viewport */}
+        <div className="w-full max-w-full min-w-0 overflow-x-auto overflow-y-visible touch-pan-x overscroll-x-contain pb-1">
+          <table className="w-full min-w-[880px] text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-[#F9F9F9] border-b border-[#E5E5E5] text-[#1A1A1A] text-[11px] font-bold uppercase tracking-wider">
-                <th className="py-3 px-4">Timestamp</th>
-                <th className="py-3 px-4">User & Role</th>
-                <th className="py-3 px-4">Action</th>
-                <th className="py-3 px-4">Severity</th>
-                <th className="py-3 px-4">Audit Details</th>
-                <th className="py-3 px-4">IP Address</th>
+              <tr className="bg-[#F9F9F9] border-b border-[#E5E5E5] text-[#1A1A1A] text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
+                <th className="py-3 px-4 min-w-[180px]">Timestamp</th>
+                <th className="py-3 px-4 min-w-[150px]">User & Role</th>
+                <th className="py-3 px-4 min-w-[150px]">Action</th>
+                <th className="py-3 px-4 min-w-[90px]">Severity</th>
+                <th className="py-3 px-4 min-w-[240px]">Audit Details</th>
+                <th className="py-3 px-4 min-w-[110px]">IP Address</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E5E5]">
