@@ -1314,11 +1314,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const expectedPassword = targetUser.password || defaultRolePassword;
     const expectedPin =
+      targetUser.quick_pin ||
       targetUser.pin ||
+      (targetUser as any).quickPin ||
       (targetUser.roleName === 'Admin'
         ? '1234'
         : targetUser.roleName === 'Inventory Manager'
         ? '2345'
+        : targetUser.roleName === 'Auditor'
+        ? '4567'
         : '3456');
 
     const isPasswordMatch =
@@ -1327,7 +1331,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       trimmedInput === defaultRolePassword ||
       trimmedInput === 'admin123'; // Admin universal unlock fallback
 
-    const isPinMatch = trimmedInput === expectedPin;
+    const isPinMatch =
+      trimmedInput === expectedPin ||
+      (targetUser.quick_pin && trimmedInput === targetUser.quick_pin) ||
+      (targetUser.pin && trimmedInput === targetUser.pin);
     const isQrMatch = targetUser.userQrCode && trimmedInput === targetUser.userQrCode;
 
     if (isPasswordMatch || isPinMatch || isQrMatch) {
@@ -1392,9 +1399,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               ? 'audit123'
               : 'staff123';
 
+          const isPinValid =
+            (dbUserRow.quick_pin && dbUserRow.quick_pin === cleanPass) ||
+            (dbUserRow.pin && dbUserRow.pin === cleanPass) ||
+            (loadedUser.quick_pin && loadedUser.quick_pin === cleanPass) ||
+            (loadedUser.pin && loadedUser.pin === cleanPass);
+
           const isPasswordValid =
             !dbUserRow.password_hash || // If NULL, accept the password and set it
             dbUserRow.password_hash === cleanPass ||
+            isPinValid ||
             cleanPass === defaultRolePassword ||
             cleanPass === 'admin123';
 
@@ -2621,26 +2635,56 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const newUserId = `usr-${Date.now()}`;
     const generatedQrCode = `USR-QR-${Math.floor(10000 + Math.random() * 90000)}`;
 
+    const defaultRolePassword =
+      role.name === 'Admin' ? 'admin123' :
+      role.name === 'Inventory Manager' ? 'manager123' :
+      role.name === 'Auditor' ? 'audit123' : 'staff123';
+
+    const defaultRolePin =
+      role.name === 'Admin' ? '1234' :
+      role.name === 'Inventory Manager' ? '2345' :
+      role.name === 'Auditor' ? '4567' : '3456';
+
+    const effectivePassword = req.password?.trim() || defaultRolePassword;
+    const effectivePin = req.pin?.trim() || defaultRolePin;
+
     const newUser: User = {
       id: newUserId,
-      name: req.fullName,
-      email: req.email,
+      name: req.fullName.trim(),
+      email: req.email.trim().toLowerCase(),
       roleId: role.id,
       roleName: role.name,
       department: req.department,
-      position: req.position,
+      position: req.position || role.name,
       phone: req.contactNumber,
       contactNumber: req.contactNumber,
       contact_number: req.contactNumber,
       assignedLocationId: assignedLocationId || undefined,
-      password: req.password || 'staff123',
-      pin: req.pin || '1234',
+      password: effectivePassword,
+      pin: effectivePin,
+      quick_pin: effectivePin,
+      quickPin: effectivePin,
       userQrCode: generatedQrCode,
-      avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+      avatarUrl: req.avatarUrl || req.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
     };
 
-    setUsers((prev) => [...prev, newUser]);
-    dbUpsertUser(newUser).catch(() => {});
+    setUsers((prev) => {
+      const nextList = [...prev, newUser];
+      safeSetJson(STORAGE_KEYS.USERS, nextList);
+      return nextList;
+    });
+
+    // 1. Save user to Supabase `users` database table with password, quick_pin, department matching
+    dbUpsertUser(newUser, effectivePassword, departments).catch((err) => {
+      console.warn('Failed to upsert approved user in Supabase users table:', err);
+    });
+
+    // 2. Register in Supabase Auth so the user can log in with email/name + password
+    if (newUser.email && effectivePassword) {
+      registerSupabaseAuthUser(newUser.email, effectivePassword).catch((err) => {
+        console.warn('Failed to register approved user in Supabase Auth:', err);
+      });
+    }
 
     const approvedRequest: UserRegistrationRequest = {
       ...req,
@@ -2651,9 +2695,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       assignedUserId: newUserId,
     };
 
-    setRegistrationRequests((prev) =>
-      prev.map((r) => (r.id === requestId ? approvedRequest : r))
-    );
+    setRegistrationRequests((prev) => {
+      const nextReqs = prev.map((r) => (r.id === requestId ? approvedRequest : r));
+      safeSetJson(STORAGE_KEYS.REGISTRATION_REQUESTS, nextReqs);
+      return nextReqs;
+    });
     dbUpsertRegistrationRequest(approvedRequest).catch(() => {});
 
     syncUserProfile({
@@ -2664,6 +2710,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       role_name: newUser.roleName,
       department: newUser.department,
       avatar: newUser.avatarUrl,
+      password_hash: effectivePassword,
     }).catch(() => {});
 
     addAuditLog(

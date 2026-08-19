@@ -293,10 +293,13 @@ export const AdminRBACView: React.FC = () => {
         userQrCode: userForm.userQrCode.trim(),
         password: userForm.password.trim() || undefined,
         pin: userForm.pin.trim() || undefined,
+        quick_pin: userForm.pin.trim() || undefined,
+        quickPin: userForm.pin.trim() || undefined,
         contactNumber: userForm.contactNumber.trim() || undefined,
         phone: userForm.contactNumber.trim() || undefined,
       });
     } else {
+      const defaultPin = userForm.pin.trim() || (roleName === 'Admin' ? '1234' : roleName === 'Inventory Manager' ? '2345' : roleName === 'Auditor' ? '4567' : '3456');
       addUser({
         name: userForm.name.trim(),
         email: userForm.email.trim(),
@@ -307,7 +310,9 @@ export const AdminRBACView: React.FC = () => {
         avatarUrl: userForm.avatarUrl || undefined,
         userQrCode: userForm.userQrCode.trim(),
         password: userForm.password.trim() || (roleName === 'Admin' ? 'admin123' : roleName === 'Inventory Manager' ? 'manager123' : roleName === 'Auditor' ? 'audit123' : 'staff123'),
-        pin: userForm.pin.trim() || (roleName === 'Admin' ? '1234' : roleName === 'Inventory Manager' ? '2345' : '3456'),
+        pin: defaultPin,
+        quick_pin: defaultPin,
+        quickPin: defaultPin,
         contactNumber: userForm.contactNumber.trim() || undefined,
         phone: userForm.contactNumber.trim() || undefined,
       });

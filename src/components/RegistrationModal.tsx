@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import { signUpWithSupabase } from '../lib/supabase';
+import { ProfilePhotoUploadInput } from './ProfilePhotoUploadInput';
 import {
   X,
   UserPlus,
@@ -38,6 +39,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, on
   const [showPassword, setShowPassword] = useState(false);
   const [pin, setPin] = useState('');
   const [reasonOrNotes, setReasonOrNotes] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -63,6 +65,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, on
     setPassword('');
     setPin('');
     setReasonOrNotes('');
+    setAvatarUrl('');
     setErrorMessage(null);
     setSubmittedData(null);
   };
@@ -121,6 +124,8 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, on
           password,
           pin: pin.trim() || undefined,
           reasonOrNotes: reasonOrNotes.trim() || undefined,
+          avatarUrl: avatarUrl.trim() || undefined,
+          avatar_url: avatarUrl.trim() || undefined,
         });
 
         setIsSubmitting(false);
@@ -360,6 +365,17 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, on
                   onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
                   placeholder="e.g. 5678"
                   className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition text-center"
+                />
+              </div>
+
+              {/* Profile Photo Upload */}
+              <div className="sm:col-span-2">
+                <ProfilePhotoUploadInput
+                  label="Official Officer Profile Picture / Portrait"
+                  value={avatarUrl}
+                  onChange={setAvatarUrl}
+                  dark={true}
+                  userNameHint={fullName || 'officer'}
                 />
               </div>
 

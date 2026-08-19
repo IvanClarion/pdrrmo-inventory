@@ -61,8 +61,10 @@ export const LoginModal: React.FC = () => {
 
   if (!isLoginModalOpen || !selectedUser) return null;
 
-  const currentRoleName = selectedUser.roleName;
-  const isPrivileged = requiresAuth(selectedUser);
+  // Always use the latest live user object from users roster
+  const liveUser = users.find((u) => u.id === selectedUser.id) || selectedUser;
+  const currentRoleName = liveUser.roleName;
+  const isPrivileged = requiresAuth(liveUser);
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,7 +108,7 @@ export const LoginModal: React.FC = () => {
     setErrorMessage(null);
 
     setTimeout(() => {
-      const result = loginUser(selectedUser.id, credential);
+      const result = loginUser(liveUser.id, credential);
       setIsSubmitting(false);
 
       if (!result.success) {
@@ -149,36 +151,36 @@ export const LoginModal: React.FC = () => {
             <div className="flex items-center gap-3 min-w-0">
               <img
                 src={
-                  selectedUser.avatarUrl ||
+                  liveUser.avatarUrl ||
                   'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
                 }
-                alt={selectedUser.name}
+                alt={liveUser.name}
                 className="w-11 h-11 rounded-full object-cover border-2 border-black shrink-0 shadow-xs"
               />
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <h4 className="font-bold text-sm text-[#1A1A1A] truncate">{selectedUser.name}</h4>
+                  <h4 className="font-bold text-sm text-[#1A1A1A] truncate">{liveUser.name}</h4>
                   <span
                     className={`text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-full ${
-                      selectedUser.roleName === 'Admin'
+                      liveUser.roleName === 'Admin'
                         ? 'bg-black text-white'
-                        : selectedUser.roleName === 'Inventory Manager'
+                        : liveUser.roleName === 'Inventory Manager'
                         ? 'bg-amber-100 text-amber-900 border border-amber-300'
                         : 'bg-gray-200 text-gray-800'
                     }`}
                   >
-                    {selectedUser.roleName}
+                    {liveUser.roleName}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 truncate">{selectedUser.email}</p>
-                <p className="text-[10px] text-gray-400 font-medium">{selectedUser.department}</p>
+                <p className="text-xs text-gray-500 truncate">{liveUser.email}</p>
+                <p className="text-[10px] text-gray-400 font-medium">{liveUser.department}</p>
               </div>
             </div>
 
             {/* Switch Target User Dropdown */}
             {users.length > 1 && (
               <select
-                value={selectedUser.id}
+                value={liveUser.id}
                 onChange={(e) => {
                   const u = users.find((usr) => usr.id === e.target.value);
                   if (u) {
@@ -205,7 +207,7 @@ export const LoginModal: React.FC = () => {
             <div>
               <p className="font-bold">Security Authentication Gate</p>
               <p className="text-[11px] text-amber-800/90 mt-0.5 leading-relaxed">
-                <strong>{selectedUser.name}</strong> holds the <strong>{selectedUser.roleName}</strong> role. Please verify your password or PIN to unlock full administrative and management permissions.
+                <strong>{liveUser.name}</strong> holds the <strong>{liveUser.roleName}</strong> role. Please verify your password or PIN to unlock full administrative and management permissions.
               </p>
             </div>
           </div>
@@ -253,7 +255,7 @@ export const LoginModal: React.FC = () => {
             <form onSubmit={handlePasswordSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-[#1A1A1A] mb-1.5">
-                  Enter Password for {selectedUser.name}
+                  Enter Password for {liveUser.name}
                 </label>
                 <div className="relative">
                   <input

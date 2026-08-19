@@ -6,12 +6,16 @@ interface ProfilePhotoUploadInputProps {
   value?: string;
   onChange: (avatarUrl: string) => void;
   label?: string;
+  dark?: boolean;
+  userNameHint?: string;
 }
 
 export const ProfilePhotoUploadInput: React.FC<ProfilePhotoUploadInputProps> = ({
   value = '',
   onChange,
   label = 'Profile Photo / Avatar',
+  dark = false,
+  userNameHint = 'user_avatar',
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -43,8 +47,8 @@ export const ProfilePhotoUploadInput: React.FC<ProfilePhotoUploadInputProps> = (
         throw new Error('Supabase client is not connected.');
       }
 
-      // Upload directly to Supabase Storage 'user_profile' bucket
-      const publicUrl = await uploadUserProfilePhotoToSupabase(file, 'user_avatar');
+      // Automatically compresses image to max 600x600 WebP/PNG before uploading to 'user_profile' bucket
+      const publicUrl = await uploadUserProfilePhotoToSupabase(file, userNameHint);
       if (publicUrl) {
         onChange(publicUrl);
         setUploadStatus('success');
@@ -91,14 +95,16 @@ export const ProfilePhotoUploadInput: React.FC<ProfilePhotoUploadInputProps> = (
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
-          <Camera className="w-3.5 h-3.5 text-black" />
+        <label className={`text-xs font-bold flex items-center gap-1.5 ${dark ? 'text-slate-200' : 'text-gray-700'}`}>
+          <Camera className={`w-3.5 h-3.5 ${dark ? 'text-amber-400' : 'text-black'}`} />
           <span>{label}</span>
         </label>
         <button
           type="button"
           onClick={() => setShowUrlInput(!showUrlInput)}
-          className="text-[10px] text-gray-500 hover:text-black font-bold flex items-center gap-1 cursor-pointer"
+          className={`text-[10px] font-bold flex items-center gap-1 cursor-pointer transition ${
+            dark ? 'text-slate-400 hover:text-amber-300' : 'text-gray-500 hover:text-black'
+          }`}
         >
           <Link className="w-3 h-3" />
           <span>{showUrlInput ? 'Upload File' : 'Paste Image URL'}</span>
@@ -112,11 +118,19 @@ export const ProfilePhotoUploadInput: React.FC<ProfilePhotoUploadInputProps> = (
             value={urlText}
             onChange={(e) => setUrlText(e.target.value)}
             placeholder="https://example.com/photo.jpg"
-            className="flex-1 px-3 py-2 bg-[#F5F5F5] border border-[#E5E5E5] rounded-xl text-xs font-medium focus:outline-none focus:border-black"
+            className={`flex-1 px-3 py-2 border rounded-xl text-xs font-medium focus:outline-none transition ${
+              dark
+                ? 'bg-slate-950 border-slate-800 text-white placeholder-slate-500 focus:border-amber-400'
+                : 'bg-[#F5F5F5] border-[#E5E5E5] text-black focus:border-black'
+            }`}
           />
           <button
             type="submit"
-            className="px-3 py-2 bg-black text-white rounded-xl text-xs font-bold hover:bg-neutral-800 transition cursor-pointer"
+            className={`px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+              dark
+                ? 'bg-amber-400 text-black hover:bg-amber-300 font-extrabold'
+                : 'bg-black text-white hover:bg-neutral-800'
+            }`}
           >
             Apply
           </button>
@@ -131,9 +145,15 @@ export const ProfilePhotoUploadInput: React.FC<ProfilePhotoUploadInputProps> = (
             onClick={() => !isUploading && fileInputRef.current?.click()}
             className={`p-4 rounded-2xl border-2 border-dashed transition cursor-pointer flex items-center gap-4 ${
               isDragging
-                ? 'border-emerald-500 bg-emerald-50/50'
+                ? dark
+                  ? 'border-amber-400 bg-amber-400/10'
+                  : 'border-emerald-500 bg-emerald-50/50'
                 : value && !value.startsWith('data:')
-                ? 'border-emerald-300 bg-emerald-50/30 hover:bg-emerald-50/50'
+                ? dark
+                  ? 'border-emerald-500/50 bg-emerald-950/30 hover:bg-emerald-950/50'
+                  : 'border-emerald-300 bg-emerald-50/30 hover:bg-emerald-50/50'
+                : dark
+                ? 'border-slate-800 bg-slate-950/80 hover:bg-slate-950 hover:border-slate-700'
                 : 'border-gray-300 bg-[#F5F5F5] hover:bg-[#EAEAEA]'
             }`}
           >
@@ -148,15 +168,15 @@ export const ProfilePhotoUploadInput: React.FC<ProfilePhotoUploadInputProps> = (
             {/* Profile Avatar Frame */}
             <div className="relative shrink-0">
               {isUploading ? (
-                <div className="w-14 h-14 rounded-full bg-black/10 flex items-center justify-center">
-                  <Loader2 className="w-6 h-6 animate-spin text-black" />
+                <div className={`w-14 h-14 rounded-full flex items-center justify-center ${dark ? 'bg-slate-800' : 'bg-black/10'}`}>
+                  <Loader2 className={`w-6 h-6 animate-spin ${dark ? 'text-amber-400' : 'text-black'}`} />
                 </div>
               ) : value ? (
                 <div className="relative">
                   <img
                     src={value}
                     alt="Profile Avatar"
-                    className="w-14 h-14 rounded-full object-cover border-2 border-black shadow-xs"
+                    className={`w-14 h-14 rounded-full object-cover border-2 shadow-xs ${dark ? 'border-amber-400' : 'border-black'}`}
                   />
                   <button
                     type="button"
@@ -172,7 +192,9 @@ export const ProfilePhotoUploadInput: React.FC<ProfilePhotoUploadInputProps> = (
                   </button>
                 </div>
               ) : (
-                <div className="w-14 h-14 rounded-full bg-gray-200 border-2 border-dashed border-gray-400 flex items-center justify-center text-gray-500">
+                <div className={`w-14 h-14 rounded-full border-2 border-dashed flex items-center justify-center ${
+                  dark ? 'bg-slate-900 border-slate-700 text-slate-500' : 'bg-gray-200 border-gray-400 text-gray-500'
+                }`}>
                   <UserIcon className="w-6 h-6" />
                 </div>
               )}
@@ -180,37 +202,41 @@ export const ProfilePhotoUploadInput: React.FC<ProfilePhotoUploadInputProps> = (
 
             {/* Instruction Text */}
             <div className="flex-1 min-w-0">
-              <p className="font-bold text-xs text-[#1A1A1A] flex items-center gap-1.5">
-                <Upload className="w-3.5 h-3.5 text-black" />
+              <p className={`font-bold text-xs flex items-center gap-1.5 ${dark ? 'text-white' : 'text-[#1A1A1A]'}`}>
+                <Upload className={`w-3.5 h-3.5 ${dark ? 'text-amber-400' : 'text-black'}`} />
                 <span>
                   {isUploading
-                    ? 'Uploading to Supabase storage...'
+                    ? 'Compressing & uploading to user_profile bucket...'
                     : value
                     ? 'Change Profile Photo'
                     : 'Upload to user_profile Bucket'}
                 </span>
               </p>
-              <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+              <p className={`text-[10px] mt-0.5 truncate ${dark ? 'text-slate-400' : 'text-gray-500'}`}>
                 {isUploading
-                  ? 'Optimizing and syncing to cloud bucket...'
+                  ? 'Optimizing dimensions and syncing to cloud bucket...'
                   : value && !value.startsWith('data:')
                   ? 'Cloud photo linked to user_profile bucket'
-                  : 'Drag & drop image (PNG, JPG, WebP) — saved directly to Supabase'}
+                  : 'Auto-compressed before upload (PNG, JPG, WebP)'}
               </p>
             </div>
           </div>
 
           {/* Upload Status Toast */}
           {uploadStatus === 'success' && (
-            <div className="px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] font-bold text-emerald-800 flex items-center gap-1.5 animate-fade-in">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <span>Photo uploaded directly to Supabase &quot;user_profile&quot; bucket!</span>
+            <div className={`px-3 py-1.5 border rounded-xl text-[11px] font-bold flex items-center gap-1.5 animate-fade-in ${
+              dark ? 'bg-emerald-950/80 border-emerald-800 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            }`}>
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>Compressed & uploaded directly to Supabase &quot;user_profile&quot; bucket!</span>
             </div>
           )}
 
           {uploadStatus === 'error' && errorMessage && (
-            <div className="px-3 py-1.5 bg-red-50 border border-red-200 rounded-xl text-[11px] font-bold text-red-800 flex items-center gap-1.5 animate-fade-in">
-              <AlertCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+            <div className={`px-3 py-1.5 border rounded-xl text-[11px] font-bold flex items-center gap-1.5 animate-fade-in ${
+              dark ? 'bg-red-950/80 border-red-800 text-red-300' : 'bg-red-50 border-red-200 text-red-800'
+            }`}>
+              <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
               <span className="truncate">{errorMessage}</span>
             </div>
           )}

@@ -37,6 +37,8 @@ export interface User {
   userQrCode?: string;
   password?: string;
   pin?: string;
+  quick_pin?: string;
+  quickPin?: string;
   phone?: string;
   contactNumber?: string;
   contact_number?: string;
@@ -55,6 +57,8 @@ export interface UserRegistrationRequest {
   requestedRoleName?: UserRoleName;
   password?: string;
   pin?: string;
+  avatarUrl?: string;
+  avatar_url?: string;
   reasonOrNotes?: string;
   status: RegistrationStatus;
   submittedAt: string;

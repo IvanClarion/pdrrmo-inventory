@@ -368,6 +368,7 @@ export function userToDb(u: User, passwordHash?: string, departments: Department
     (d) => d.id === u.department || d.name.toLowerCase() === (u.department || '').toLowerCase()
   );
   const deptId = matchedDept ? matchedDept.id : u.department || null;
+  const userPin = u.quick_pin || u.pin || (u as any).quickPin || '1234';
 
   return {
     id: u.id,
@@ -380,7 +381,8 @@ export function userToDb(u: User, passwordHash?: string, departments: Department
     position: u.roleName || u.position || null,
     contact_number: u.contactNumber || u.phone || u.contact_number || null,
     user_qr_code: generatedQr,
-    pin: u.pin || '1234',
+    pin: userPin,
+    quick_pin: userPin,
     status: 'ACTIVE',
     assigned_location_id: u.assignedLocationId || null,
     avatar_url: u.avatarUrl || null,
@@ -412,6 +414,15 @@ export function dbToUser(row: any, roles: UserRole[] = [], departments: Departme
       ? 'audit123'
       : 'staff123';
 
+  const defaultRolePin =
+    roleName === 'Admin'
+      ? '1234'
+      : roleName === 'Inventory Manager'
+      ? '2345'
+      : roleName === 'Auditor'
+      ? '4567'
+      : '3456';
+
   const userQr = row.user_qr_code || row.userQrCode || `USR-QR-${row.id.toUpperCase()}`;
 
   // Match department by department_id or department name
@@ -420,6 +431,7 @@ export function dbToUser(row: any, roles: UserRole[] = [], departments: Departme
   );
   const resolvedDept = matchedDept ? matchedDept.name : row.department || '';
   const contactNum = row.contact_number || row.phone || '';
+  const resolvedPin = row.quick_pin || row.pin || row.quickPin || defaultRolePin;
 
   return {
     id: row.id,
@@ -433,7 +445,9 @@ export function dbToUser(row: any, roles: UserRole[] = [], departments: Departme
       row.avatar_url ||
       'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
     password: row.password_hash || defaultRolePassword,
-    pin: row.pin || '1234',
+    pin: resolvedPin,
+    quick_pin: resolvedPin,
+    quickPin: resolvedPin,
     userQrCode: userQr,
     phone: contactNum,
     contactNumber: contactNum,
@@ -491,6 +505,7 @@ export function registrationRequestToDb(reg: UserRegistrationRequest): any {
     rejection_reason: reg.rejectionReason || null,
     assigned_role_name: reg.assignedRoleName || null,
     assigned_user_id: reg.assignedUserId || null,
+    avatar_url: reg.avatarUrl || (reg as any).avatar_url || null,
   };
 }
 
@@ -513,6 +528,8 @@ export function dbToRegistrationRequest(row: any): UserRegistrationRequest {
     rejectionReason: row.rejection_reason || row.rejectionReason,
     assignedRoleName: row.assigned_role_name || row.assignedRoleName,
     assignedUserId: row.assigned_user_id || row.assignedUserId,
+    avatarUrl: row.avatar_url || row.avatarUrl || undefined,
+    avatar_url: row.avatar_url || row.avatarUrl || undefined,
   };
 }
 
@@ -1006,6 +1023,7 @@ export async function dbUpsertUser(user: User, passwordHash?: string, department
       role_id: fullPayload.role_id,
       department_id: fullPayload.department_id,
       contact_number: user.contactNumber || user.phone || (user as any).contact_number || null,
+      quick_pin: user.quick_pin || user.pin || (user as any).quickPin || null,
       assigned_location_id: user.assignedLocationId || null,
       avatar_url: user.avatarUrl || null,
     };

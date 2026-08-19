@@ -116,8 +116,10 @@ export const AdminRegistrationsView: React.FC = () => {
     if (result.success) {
       const approvedReqName = selectedReqForApproval.fullName;
       const approvedEmail = selectedReqForApproval.email;
+      const targetRole = availableRoles.find((r) => r.id === finalRoleId);
+      const roleDisplayName = targetRole?.name || 'Staff';
       setSelectedReqForApproval(null);
-      setActionSuccessMsg(`Account for "${approvedReqName}" has been successfully approved and activated as Staff!`);
+      setActionSuccessMsg(`Account for "${approvedReqName}" has been successfully approved and activated as ${roleDisplayName}!`);
       setTimeout(() => setActionSuccessMsg(null), 5000);
 
       // Find the newly created user to allow badge view
@@ -338,9 +340,17 @@ export const AdminRegistrationsView: React.FC = () => {
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-11 h-11 rounded-2xl bg-slate-900 text-white font-black text-xs flex items-center justify-center shrink-0 border border-slate-700 shadow-xs">
-                        {req.fullName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
-                      </div>
+                      {req.avatarUrl || req.avatar_url ? (
+                        <img
+                          src={req.avatarUrl || req.avatar_url}
+                          alt={req.fullName}
+                          className="w-11 h-11 rounded-2xl object-cover border border-slate-700 shadow-xs shrink-0"
+                        />
+                      ) : (
+                        <div className="w-11 h-11 rounded-2xl bg-slate-900 text-white font-black text-xs flex items-center justify-center shrink-0 border border-slate-700 shadow-xs">
+                          {req.fullName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                        </div>
+                      )}
                       <div className="min-w-0">
                         <h4 className="font-bold text-[#1A1A1A] text-sm truncate">{req.fullName}</h4>
                         <div className="flex items-center gap-1.5 text-xs text-gray-500 truncate">
@@ -517,13 +527,26 @@ export const AdminRegistrationsView: React.FC = () => {
 
             <form onSubmit={handleConfirmApproval} className="p-5 space-y-4 text-xs">
               {/* Applicant Preview Box */}
-              <div className="p-3.5 bg-emerald-50/50 border border-emerald-200 rounded-2xl space-y-1">
-                <span className="text-[10px] font-bold uppercase text-emerald-800">Confirmed Applicant Profile</span>
-                <p className="font-bold text-sm text-emerald-950">{selectedReqForApproval.fullName}</p>
-                <p className="text-emerald-800 text-[11px]">{selectedReqForApproval.email}</p>
-                <p className="text-gray-600 text-[11px]">
-                  Division: <strong>{selectedReqForApproval.department}</strong> • Position: <strong>{selectedReqForApproval.position || 'Staff'}</strong>
-                </p>
+              <div className="p-3.5 bg-emerald-50/50 border border-emerald-200 rounded-2xl flex items-center gap-3.5">
+                {selectedReqForApproval.avatarUrl || selectedReqForApproval.avatar_url ? (
+                  <img
+                    src={selectedReqForApproval.avatarUrl || selectedReqForApproval.avatar_url}
+                    alt={selectedReqForApproval.fullName}
+                    className="w-12 h-12 rounded-2xl object-cover border-2 border-emerald-600 shadow-xs shrink-0"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-950 text-emerald-300 font-black text-sm flex items-center justify-center shrink-0 border border-emerald-800 shadow-xs">
+                    {selectedReqForApproval.fullName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <span className="text-[10px] font-bold uppercase text-emerald-800 block">Confirmed Applicant Profile</span>
+                  <p className="font-bold text-sm text-emerald-950 truncate">{selectedReqForApproval.fullName}</p>
+                  <p className="text-emerald-800 text-[11px] truncate">{selectedReqForApproval.email}</p>
+                  <p className="text-gray-600 text-[11px] truncate">
+                    Division: <strong>{selectedReqForApproval.department}</strong> • Position: <strong>{selectedReqForApproval.position || 'Staff'}</strong>
+                  </p>
+                </div>
               </div>
 
               {/* Assign System Role */}
