@@ -631,8 +631,19 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   // Tab Accessibility & Role Visibility Control
+  const getDefaultAccessibleTab = (roleName?: string): string => {
+    const targetRole = roleName || currentRole?.name || currentUser?.roleName;
+    if (targetRole === 'Staff') {
+      return 'inventory';
+    }
+    return 'dashboard';
+  };
+
   const isTabAccessible = (tabId: string, roleName?: string): boolean => {
     const targetRole = roleName || currentRole?.name || currentUser?.roleName;
+    if (tabId === 'dashboard') {
+      return targetRole !== 'Staff';
+    }
     if (tabId === 'admin') {
       return targetRole === 'Admin' || hasPermission('canManageRoles');
     }
@@ -650,7 +661,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const setActiveTabGuarded = (tab: string) => {
     if (!isTabAccessible(tab)) {
-      setActiveTab('dashboard');
+      setActiveTab(getDefaultAccessibleTab());
       return;
     }
     setActiveTab(tab);
@@ -659,7 +670,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Fallback if role changes and active tab becomes forbidden
   useEffect(() => {
     if (!isTabAccessible(activeTab)) {
-      setActiveTab('dashboard');
+      setActiveTab(getDefaultAccessibleTab());
     }
   }, [currentUser, currentRole, activeTab]);
 
@@ -1383,8 +1394,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     localStorage.removeItem(STORAGE_KEYS.AUTH_USER_ID);
     signOutFromSupabase().catch(() => {});
 
-    if (activeTab === 'admin') {
-      setActiveTab('dashboard');
+    if (!isTabAccessible(activeTab)) {
+      setActiveTab(getDefaultAccessibleTab());
     }
 
     addAuditLog(
@@ -1408,9 +1419,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setAuthenticatedUserId(userId);
     const userRole = roles.find((r) => r.id === targetUser.roleId);
 
-    // If switching to non-admin while viewing the Admin & RBAC tab, redirect to Dashboard
-    if (targetUser.roleName !== 'Admin' && activeTab === 'admin') {
-      setActiveTab('dashboard');
+    // If switching to role where current active tab is inaccessible, redirect to their default accessible tab
+    if (!isTabAccessible(activeTab, targetUser.roleName)) {
+      setActiveTab(getDefaultAccessibleTab(targetUser.roleName));
     }
 
     addAuditLog('USER_SWITCHED', `Switched active session user to ${targetUser.name} (${userRole?.name || 'Unknown Role'})`);

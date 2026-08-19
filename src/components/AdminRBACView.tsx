@@ -64,6 +64,7 @@ export const AdminRBACView: React.FC = () => {
     openLoginModal,
     requiresAuth,
     setActiveTab,
+    isTabAccessible,
     isLoadingDatabase,
   } = useInventory();
 
@@ -211,10 +212,10 @@ export const AdminRBACView: React.FC = () => {
         </div>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
           <button
-            onClick={() => setActiveTab('dashboard')}
+            onClick={() => setActiveTab(isTabAccessible('dashboard') ? 'dashboard' : 'inventory')}
             className="w-full sm:w-auto px-5 py-2.5 bg-black hover:bg-neutral-800 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
           >
-            Return to Dashboard
+            {isTabAccessible('dashboard') ? 'Return to Dashboard' : 'Return to Inventory'}
           </button>
           <button
             onClick={() => {
