@@ -831,14 +831,28 @@ export async function dbUpsertItems(items: Item[]): Promise<{ success: boolean; 
   }
 }
 
-export async function dbDeleteItem(id: string) {
+export async function dbDeleteItem(id: string): Promise<{ success: boolean; error?: any }> {
   const client = getSupabase();
-  if (!client) return;
+  if (!client) return { success: false, error: 'Supabase client not initialized' };
   try {
+    // 1. Delete referencing pending check-ins and transactions to prevent foreign key violation 23503
+    try {
+      await client.from('pending_checkins').delete().eq('item_id', id);
+    } catch {}
+    try {
+      await client.from('transactions').delete().eq('item_id', id);
+    } catch {}
+
+    // 2. Delete item from items table
     const { error } = await client.from('items').delete().eq('id', id);
-    if (error) console.error('❌ Supabase items DELETE error:', error);
+    if (error) {
+      console.error('❌ Supabase items DELETE error:', error.message, '| Code:', error.code);
+      return { success: false, error };
+    }
+    return { success: true };
   } catch (err) {
     console.warn('Failed to delete item from Supabase:', err);
+    return { success: false, error: err };
   }
 }
 

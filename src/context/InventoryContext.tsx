@@ -239,7 +239,7 @@ interface InventoryContextType {
   addItem: (newItem: Omit<Item, 'id'>) => Item;
   addItems: (newItems: Omit<Item, 'id'>[]) => Item[];
   editItem: (id: string, updates: Partial<Item>) => void;
-  deleteItem: (id: string) => void;
+  deleteItem: (id: string) => Promise<boolean>;
   refreshItemsFromDatabase: () => Promise<void>;
   addLocation: (location: Omit<Location, 'id'>) => Location;
   editLocation: (id: string, updates: Partial<Location>) => void;
@@ -2451,13 +2451,20 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return true;
   };
 
-  const deleteItem = (id: string) => {
+  const deleteItem = async (id: string): Promise<boolean> => {
     const target = items.find((i) => i.id === id);
-    setItems((prev) => prev.filter((i) => i.id !== id));
-    dbDeleteItem(id).catch(() => {});
+    setItems((prev) => {
+      const nextList = prev.filter((i) => i.id !== id);
+      safeSetJson(STORAGE_KEYS.ITEMS, nextList);
+      return nextList;
+    });
+
     if (target) {
       addAuditLog('ITEM_DELETED', `Deleted item ${target.name} (SKU: ${target.sku})`, 'warning');
     }
+
+    const res = await dbDeleteItem(id);
+    return res.success;
   };
 
   const refreshItemsFromDatabase = async (): Promise<void> => {

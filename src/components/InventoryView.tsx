@@ -108,19 +108,20 @@ export const InventoryView: React.FC = () => {
     setTimeout(() => setCopiedSku(null), 2000);
   };
 
-  const handleConfirmDeleteItem = () => {
+  const handleConfirmDeleteItem = async () => {
     if (itemToDelete) {
       const name = itemToDelete.name;
       const sku = itemToDelete.sku;
-      deleteItem(itemToDelete.id);
+      const targetId = itemToDelete.id;
       setItemToDelete(null);
-      if (selectedItemForDetail?.id === itemToDelete.id) {
+      if (selectedItemForDetail?.id === targetId) {
         setSelectedItemForDetail(null);
       }
-      if (editingItem?.id === itemToDelete.id) {
+      if (editingItem?.id === targetId) {
         setIsAddModalOpen(false);
         setEditingItem(null);
       }
+      await deleteItem(targetId);
       showToast(`Item "${name}" (${sku}) deleted.`);
     }
   };
