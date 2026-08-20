@@ -67,14 +67,16 @@ const generatePieceSkuString = (baseSku: string, unitIndex: number, format: stri
 };
 
 const generatePieceBarcodeString = (baseBarcode: string, unitIndex: number) => {
-  const cleanBarcode = baseBarcode.trim();
+  const cleanBarcode = (baseBarcode || '').trim();
   if (!cleanBarcode) return generateValidUPC();
-  const num2 = String(unitIndex).padStart(2, '0');
-  if (/^\d+$/.test(cleanBarcode) && cleanBarcode.length >= 8) {
-    const prefix = cleanBarcode.slice(0, Math.max(0, cleanBarcode.length - 2));
-    return formatAsValidUPC(`${prefix}${num2}`);
+  const digitsOnly = cleanBarcode.replace(/\D/g, '');
+  if (digitsOnly.length >= 8) {
+    const prefix8 = digitsOnly.slice(0, 8).padEnd(8, '0');
+    const unit3 = String(unitIndex).padStart(3, '0');
+    return formatAsValidUPC(`${prefix8}${unit3}`);
   }
-  return `${cleanBarcode}-${num2}`;
+  const num3 = String(unitIndex).padStart(3, '0');
+  return `${cleanBarcode}-${num3}`;
 };
 
 interface AddEditItemModalProps {
@@ -509,8 +511,8 @@ export const AddEditItemModal: React.FC<AddEditItemModalProps> = ({
       });
     } else {
       // Adding new item(s)
-      if (quantity > 1 && createAsDiscreteItems) {
-        // User requested distinct individual items for each unit quantity
+      if (!isConsumable && quantity > 1 && createAsDiscreteItems) {
+        // Returnable asset: User requested distinct serialized items for each unit quantity
         const discreteItems = Array.from({ length: quantity }, (_, idx) => {
           const unitIdx = idx + 1;
           const pieceSku = generatePieceSkuString(sku, unitIdx, skuNumberingFormat);
@@ -531,18 +533,14 @@ export const AddEditItemModal: React.FC<AddEditItemModalProps> = ({
 
         addItems(discreteItems);
       } else {
-        // Single item or single batch record
-        const pieceSkus = Array.from({ length: Math.max(1, quantity) }, (_, idx) =>
-          generatePieceSkuString(sku, idx + 1, skuNumberingFormat)
-        );
-
+        // Consumable supply or bulk non-discrete asset: Single inventory record with total bulk quantity
         addItem({
           ...basePayload,
           sku: sku.trim(),
           barcode: barcode.trim(),
           quantity: Math.max(1, quantity),
           manufacturerSerialNumber: manufacturerSerialNumber.trim() || undefined,
-          pieceSkus: pieceSkus,
+          pieceSkus: [sku.trim()],
         });
       }
     }
@@ -733,7 +731,11 @@ export const AddEditItemModal: React.FC<AddEditItemModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <button
                   type="button"
-                  onClick={() => setIsConsumable(false)}
+                  onClick={() => {
+                    setIsConsumable(false);
+                    setCreateAsDiscreteItems(true);
+                    if (unitOfMeasure === 'pcs') setUnitOfMeasure('units');
+                  }}
                   className={`p-3 rounded-xl border text-left flex items-start gap-3 transition cursor-pointer ${
                     !isConsumable
                       ? 'bg-blue-50/90 border-blue-600 ring-2 ring-blue-500/20'
@@ -766,7 +768,11 @@ export const AddEditItemModal: React.FC<AddEditItemModalProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setIsConsumable(true)}
+                  onClick={() => {
+                    setIsConsumable(true);
+                    setCreateAsDiscreteItems(false);
+                    if (unitOfMeasure === 'units') setUnitOfMeasure('pcs');
+                  }}
                   className={`p-3 rounded-xl border text-left flex items-start gap-3 transition cursor-pointer ${
                     isConsumable
                       ? 'bg-amber-50/90 border-amber-600 ring-2 ring-amber-500/20'
@@ -1502,76 +1508,97 @@ export const AddEditItemModal: React.FC<AddEditItemModalProps> = ({
             </div>
           </div>
 
-          {/* MULTI-QUANTITY DISCRETE SKU GENERATOR (When quantity > 1 on Add Item) */}
+          {/* MULTI-QUANTITY HANDLING (When quantity > 1 on Add Item) */}
           {!editingItem && quantity > 1 && (
-            <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-blue-700" />
-                  <span className="text-xs font-bold text-blue-950">
-                    Multi-Quantity SKU & Barcode Generator ({quantity} Units)
-                  </span>
+            isConsumable ? (
+              <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl flex items-start gap-3">
+                <div className="w-8 h-8 rounded-xl bg-amber-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                  <PackageCheck className="w-4 h-4" />
                 </div>
-                <div className="flex items-center gap-2">
-                  <label className="text-[11px] font-bold text-blue-900 cursor-pointer flex items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={createAsDiscreteItems}
-                      onChange={(e) => setCreateAsDiscreteItems(e.target.checked)}
-                      className="rounded text-blue-600 focus:ring-blue-500"
-                    />
-                    <span>Create {quantity} separate inventory items (Each with unique SKU & Barcode)</span>
-                  </label>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-amber-950">
+                      Bulk Consumable Supply Batch ({quantity} {unitOfMeasure || 'pcs'})
+                    </span>
+                    <span className="text-[10px] font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">
+                      Single Record
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-amber-900/80 leading-relaxed mt-1">
+                    Managed as a single bulk inventory entry with <span className="font-bold text-black">{quantity} {unitOfMeasure || 'pcs'}</span> total stock. Check-outs and issues will deduct directly from this shared balance without generating separate individual piece rows.
+                  </p>
                 </div>
               </div>
-
-              {createAsDiscreteItems && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="text-gray-600 font-semibold text-[11px]">SKU Format Suffix:</span>
-                    <select
-                      value={skuNumberingFormat}
-                      onChange={(e) => setSkuNumberingFormat(e.target.value as any)}
-                      className="px-2 py-1 bg-white border border-blue-300 rounded-lg text-xs font-mono font-bold"
-                    >
-                      <option value="-01">Dash Two Digits: {sku || 'SKU'}-01, -02...</option>
-                      <option value="-P01">Piece Notation: {sku || 'SKU'}-P01, -P02...</option>
-                      <option value="-001">Three Digits: {sku || 'SKU'}-001, -002...</option>
-                      <option value="-1">Simple Number: {sku || 'SKU'}-1, -2...</option>
-                      <option value="ALPHA">Alphabetical: {sku || 'SKU'}-A, -B...</option>
-                    </select>
+            ) : (
+              <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-blue-700" />
+                    <span className="text-xs font-bold text-blue-950">
+                      Multi-Quantity SKU & Barcode Generator ({quantity} Units)
+                    </span>
                   </div>
-
-                  {/* Discrete Piece Preview Box */}
-                  <div className="p-3 bg-white rounded-xl border border-blue-200 max-h-36 overflow-y-auto space-y-1.5 text-xs font-mono">
-                    <div className="text-[10px] font-bold uppercase text-gray-500 tracking-wider">
-                      Generated Individual Items Preview:
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                      {Array.from({ length: Math.min(6, quantity) }, (_, i) => {
-                        const unitNum = i + 1;
-                        const pSku = generatePieceSkuString(sku, unitNum, skuNumberingFormat);
-                        const pBarcode = generatePieceBarcodeString(barcode, unitNum);
-                        return (
-                          <div
-                            key={i}
-                            className="flex items-center justify-between px-2.5 py-1.5 bg-gray-50 rounded-lg border border-gray-200 text-[11px]"
-                          >
-                            <span className="font-bold text-black">{pSku}</span>
-                            <span className="text-gray-500 text-[10px]">Barcode: {pBarcode}</span>
-                          </div>
-                        );
-                      })}
-                      {quantity > 6 && (
-                        <div className="text-[10px] text-gray-400 italic py-1 col-span-full">
-                          + {quantity - 6} more individual pieces will be generated...
-                        </div>
-                      )}
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-[11px] font-bold text-blue-900 cursor-pointer flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        checked={createAsDiscreteItems}
+                        onChange={(e) => setCreateAsDiscreteItems(e.target.checked)}
+                        className="rounded text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>Create {quantity} separate inventory items (Each with unique SKU & Barcode)</span>
+                    </label>
                   </div>
                 </div>
-              )}
-            </div>
+
+                {createAsDiscreteItems && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-gray-600 font-semibold text-[11px]">SKU Format Suffix:</span>
+                      <select
+                        value={skuNumberingFormat}
+                        onChange={(e) => setSkuNumberingFormat(e.target.value as any)}
+                        className="px-2 py-1 bg-white border border-blue-300 rounded-lg text-xs font-mono font-bold"
+                      >
+                        <option value="-01">Dash Two Digits: {sku || 'SKU'}-01, -02...</option>
+                        <option value="-P01">Piece Notation: {sku || 'SKU'}-P01, -P02...</option>
+                        <option value="-001">Three Digits: {sku || 'SKU'}-001, -002...</option>
+                        <option value="-1">Simple Number: {sku || 'SKU'}-1, -2...</option>
+                        <option value="ALPHA">Alphabetical: {sku || 'SKU'}-A, -B...</option>
+                      </select>
+                    </div>
+
+                    {/* Discrete Piece Preview Box */}
+                    <div className="p-3 bg-white rounded-xl border border-blue-200 max-h-36 overflow-y-auto space-y-1.5 text-xs font-mono">
+                      <div className="text-[10px] font-bold uppercase text-gray-500 tracking-wider">
+                        Generated Individual Items Preview:
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                        {Array.from({ length: Math.min(6, quantity) }, (_, i) => {
+                          const unitNum = i + 1;
+                          const pSku = generatePieceSkuString(sku, unitNum, skuNumberingFormat);
+                          const pBarcode = generatePieceBarcodeString(barcode, unitNum);
+                          return (
+                            <div
+                              key={i}
+                              className="flex items-center justify-between px-2.5 py-1.5 bg-gray-50 rounded-lg border border-gray-200 text-[11px]"
+                            >
+                              <span className="font-bold text-black">{pSku}</span>
+                              <span className="text-gray-500 text-[10px]">Barcode: {pBarcode}</span>
+                            </div>
+                          );
+                        })}
+                        {quantity > 6 && (
+                          <div className="text-[10px] text-gray-400 italic py-1 col-span-full">
+                            + {quantity - 6} more individual pieces will be generated...
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
           )}
 
           {/* EXPIRATION DATE & SHELF-LIFE TRACKING (6m, 3m, 1m & Expired Intervals) */}

@@ -532,22 +532,156 @@ export function dbToRegistrationRequest(row: any): UserRegistrationRequest {
   };
 }
 
+export const DEFAULT_DASHBOARD_METRIC_CARDS: DashboardMetricCard[] = [
+  {
+    id: 'mc-total-valuation',
+    card_key: 'totalValuation',
+    title: 'Total Assets Valuation',
+    category: 'Financial',
+    description: 'Current aggregate monetary value of all physical inventory in PHP (₱)',
+    unit_label: 'PHP (₱)',
+    icon_name: 'DollarSign',
+    is_displayed: true,
+    display_order: 1,
+  },
+  {
+    id: 'mc-low-stock-alerts',
+    card_key: 'lowStockAlerts',
+    title: 'Stock Safety Alerts',
+    category: 'Inventory',
+    description: 'SKUs currently at or below their safety reorder threshold point',
+    unit_label: 'SKUs',
+    icon_name: 'AlertTriangle',
+    is_displayed: true,
+    display_order: 2,
+  },
+  {
+    id: 'mc-active-loans',
+    card_key: 'activeLoans',
+    title: 'Active Field Loans',
+    category: 'Operations',
+    description: 'Assets currently checked out to team members, vehicles, or projects',
+    unit_label: 'Items',
+    icon_name: 'ArrowRightLeft',
+    is_displayed: true,
+    display_order: 3,
+  },
+  {
+    id: 'mc-categories-count',
+    card_key: 'categoriesCount',
+    title: 'Active Categories',
+    category: 'Catalog',
+    description: 'Distinct classification taxonomy groups organized in master inventory',
+    unit_label: 'Categories',
+    icon_name: 'Boxes',
+    is_displayed: true,
+    display_order: 4,
+  },
+  {
+    id: 'mc-master-catalog-skus',
+    card_key: 'totalMasterSkus',
+    title: 'Master Catalog SKUs',
+    category: 'Catalog',
+    description: 'Total number of distinct inventory SKU items registered in database',
+    unit_label: 'SKUs',
+    icon_name: 'Package',
+    is_displayed: false,
+    display_order: 5,
+  },
+  {
+    id: 'mc-total-physical-units',
+    card_key: 'totalPhysicalUnits',
+    title: 'Total Physical Units',
+    category: 'Inventory',
+    description: 'Sum of all individual physical units across warehouse & field locations',
+    unit_label: 'Units',
+    icon_name: 'Layers',
+    is_displayed: false,
+    display_order: 6,
+  },
+  {
+    id: 'mc-equipment-sets-kits',
+    card_key: 'setsAndBundles',
+    title: 'Equipment Sets & Kits',
+    category: 'Operations',
+    description: 'Pre-packaged kit bundles composed of multi-piece components',
+    unit_label: 'Bundles',
+    icon_name: 'Boxes',
+    is_displayed: false,
+    display_order: 7,
+  },
+  {
+    id: 'mc-pending-return-approvals',
+    card_key: 'pendingReturns',
+    title: 'Pending Return Approvals',
+    category: 'Operations',
+    description: 'Return check-ins submitted by field staff waiting for Admin verification',
+    unit_label: 'Requests',
+    icon_name: 'Clock',
+    is_displayed: false,
+    display_order: 8,
+  },
+  {
+    id: 'mc-damaged-maintenance',
+    card_key: 'maintenanceDamaged',
+    title: 'Damaged & Maintenance',
+    category: 'Condition',
+    description: 'Items reported with damage, fair wear, or due for scheduled servicing',
+    unit_label: 'Items',
+    icon_name: 'AlertCircle',
+    is_displayed: false,
+    display_order: 9,
+  },
+  {
+    id: 'mc-active-purchase-orders',
+    card_key: 'activePurchaseOrders',
+    title: 'Active Purchase Orders',
+    category: 'Financial',
+    description: 'Procurement orders currently in Draft, Sent, or Approved status',
+    unit_label: 'Orders',
+    icon_name: 'Building2',
+    is_displayed: false,
+    display_order: 10,
+  },
+  {
+    id: 'mc-shelf-life-expiry-alerts',
+    card_key: 'expiryAlerts',
+    title: 'Shelf-Life & Expiry Alerts',
+    category: 'Operations',
+    description: 'Perishable & consumable supplies tracked in intervals (6m, 3m, 1m & Expired)',
+    unit_label: 'Alerts',
+    icon_name: 'CalendarClock',
+    is_displayed: true,
+    display_order: 11,
+  },
+];
+
 export function dbToDashboardMetricCard(row: any): DashboardMetricCard {
+  const rowId = String(row.id || '');
+  const matchingDefault = DEFAULT_DASHBOARD_METRIC_CARDS.find(
+    (d) =>
+      d.id === rowId ||
+      (row.title && d.title.toLowerCase() === String(row.title).toLowerCase()) ||
+      (row.card_key && d.card_key.toLowerCase() === String(row.card_key).replace(/[^a-zA-Z0-9]/g, '').toLowerCase())
+  );
+
+  const cardKey = row.card_key || row.cardKey || (matchingDefault ? matchingDefault.card_key : '') || rowId;
+
   return {
-    id: String(row.id || ''),
-    card_key: row.card_key || row.cardKey || '',
-    cardKey: row.card_key || row.cardKey || '',
-    title: row.title || '',
-    category: row.category || 'General',
-    description: row.description || '',
-    unit_label: row.unit_label || row.unitLabel || '',
-    unitLabel: row.unit_label || row.unitLabel || '',
-    icon_name: row.icon_name || row.iconName || '',
-    iconName: row.icon_name || row.iconName || '',
-    is_displayed: row.is_displayed ?? row.isDisplayed ?? true,
-    isDisplayed: row.is_displayed ?? row.isDisplayed ?? true,
-    display_order: Number(row.display_order ?? row.displayOrder ?? 0),
-    displayOrder: Number(row.display_order ?? row.displayOrder ?? 0),
+    id: rowId || (matchingDefault ? matchingDefault.id : `mc-${Date.now()}`),
+    card_key: cardKey,
+    cardKey: cardKey,
+    title: row.title || (matchingDefault ? matchingDefault.title : ''),
+    category: row.category || (matchingDefault ? matchingDefault.category : 'General'),
+    description: row.description || (matchingDefault ? matchingDefault.description : ''),
+    unit_label: row.unit_label || row.unitLabel || (matchingDefault ? matchingDefault.unit_label : ''),
+    unitLabel: row.unit_label || row.unitLabel || (matchingDefault ? matchingDefault.unit_label : ''),
+    icon_name: row.icon_name || row.iconName || (matchingDefault ? matchingDefault.icon_name : ''),
+    iconName: row.icon_name || row.iconName || (matchingDefault ? matchingDefault.icon_name : ''),
+    is_displayed: row.is_displayed ?? row.isDisplayed ?? (matchingDefault ? matchingDefault.is_displayed : true),
+    isDisplayed: row.is_displayed ?? row.isDisplayed ?? (matchingDefault ? matchingDefault.is_displayed : true),
+    display_order: Number(row.display_order ?? row.displayOrder ?? (matchingDefault ? matchingDefault.display_order : 0)),
+    displayOrder: Number(row.display_order ?? row.displayOrder ?? (matchingDefault ? matchingDefault.display_order : 0)),
     created_at: row.created_at || row.createdAt,
     updated_at: row.updated_at || row.updatedAt,
   };
@@ -808,21 +942,32 @@ export async function dbUpsertItem(item: Item): Promise<{ success: boolean; data
 export async function dbUpsertItems(items: Item[]): Promise<{ success: boolean; error?: any }> {
   const client = getSupabase();
   if (!client) return { success: false, error: 'Supabase client not initialized' };
+  if (!items || items.length === 0) return { success: true };
   try {
     const payloads = items.map(itemToDb);
-    const { error } = await client.from('items').upsert(payloads, { onConflict: 'id' });
-    if (error) {
-      if (error.code === '23503') {
-        const safePayloads = payloads.map((p) => ({ ...p, location_id: null, vendor_id: null }));
-        const retryRes = await client.from('items').upsert(safePayloads, { onConflict: 'id' });
-        if (retryRes.error) {
-          console.error('❌ Supabase bulk items UPSERT retry error:', retryRes.error);
-          return { success: false, error: retryRes.error };
+
+    const chunkSize = 50;
+    for (let i = 0; i < payloads.length; i += chunkSize) {
+      const chunk = payloads.slice(i, i + chunkSize);
+      const { error } = await client.from('items').upsert(chunk, { onConflict: 'id' });
+      if (error) {
+        if (error.code === '23503') {
+          const safeChunk = chunk.map((p) => ({ ...p, location_id: null, vendor_id: null }));
+          const retryRes = await client.from('items').upsert(safeChunk, { onConflict: 'id' });
+          if (retryRes.error) {
+            console.error('❌ Supabase bulk items UPSERT retry error:', retryRes.error);
+            return { success: false, error: retryRes.error };
+          }
+        } else {
+          console.warn('Batch items insert notice, trying individual rows:', error.message);
+          for (const itemPayload of chunk) {
+            const singleRes = await client.from('items').upsert(itemPayload, { onConflict: 'id' });
+            if (singleRes.error && singleRes.error.code === '23503') {
+              await client.from('items').upsert({ ...itemPayload, location_id: null, vendor_id: null }, { onConflict: 'id' });
+            }
+          }
         }
-        return { success: true };
       }
-      console.error('❌ Supabase bulk items UPSERT error:', error);
-      return { success: false, error };
     }
     return { success: true };
   } catch (err) {
@@ -1183,129 +1328,7 @@ export async function dbWipeAllItems() {
 // DASHBOARD METRIC CARDS CRUD
 // ============================================================================
 
-export const DEFAULT_DASHBOARD_METRIC_CARDS: DashboardMetricCard[] = [
-  {
-    id: 'mc-total-valuation',
-    card_key: 'totalValuation',
-    title: 'Total Assets Valuation',
-    category: 'Financial',
-    description: 'Current aggregate monetary value of all physical inventory in PHP (₱)',
-    unit_label: 'PHP (₱)',
-    icon_name: 'DollarSign',
-    is_displayed: true,
-    display_order: 1,
-  },
-  {
-    id: 'mc-low-stock-alerts',
-    card_key: 'lowStockAlerts',
-    title: 'Stock Safety Alerts',
-    category: 'Inventory',
-    description: 'SKUs currently at or below their safety reorder threshold point',
-    unit_label: 'SKUs',
-    icon_name: 'AlertTriangle',
-    is_displayed: true,
-    display_order: 2,
-  },
-  {
-    id: 'mc-active-loans',
-    card_key: 'activeLoans',
-    title: 'Active Field Loans',
-    category: 'Operations',
-    description: 'Assets currently checked out to team members, vehicles, or projects',
-    unit_label: 'Items',
-    icon_name: 'ArrowRightLeft',
-    is_displayed: true,
-    display_order: 3,
-  },
-  {
-    id: 'mc-categories-count',
-    card_key: 'categoriesCount',
-    title: 'Active Categories',
-    category: 'Catalog',
-    description: 'Distinct classification taxonomy groups organized in master inventory',
-    unit_label: 'Categories',
-    icon_name: 'Boxes',
-    is_displayed: true,
-    display_order: 4,
-  },
-  {
-    id: 'mc-master-catalog-skus',
-    card_key: 'totalMasterSkus',
-    title: 'Master Catalog SKUs',
-    category: 'Catalog',
-    description: 'Total number of distinct inventory SKU items registered in database',
-    unit_label: 'SKUs',
-    icon_name: 'Package',
-    is_displayed: false,
-    display_order: 5,
-  },
-  {
-    id: 'mc-total-physical-units',
-    card_key: 'totalPhysicalUnits',
-    title: 'Total Physical Units',
-    category: 'Inventory',
-    description: 'Sum of all individual physical units across warehouse & field locations',
-    unit_label: 'Units',
-    icon_name: 'Layers',
-    is_displayed: false,
-    display_order: 6,
-  },
-  {
-    id: 'mc-equipment-sets-kits',
-    card_key: 'setsAndBundles',
-    title: 'Equipment Sets & Kits',
-    category: 'Operations',
-    description: 'Pre-packaged kit bundles composed of multi-piece components',
-    unit_label: 'Bundles',
-    icon_name: 'Boxes',
-    is_displayed: false,
-    display_order: 7,
-  },
-  {
-    id: 'mc-pending-return-approvals',
-    card_key: 'pendingReturns',
-    title: 'Pending Return Approvals',
-    category: 'Operations',
-    description: 'Return check-ins submitted by field staff waiting for Admin verification',
-    unit_label: 'Requests',
-    icon_name: 'Clock',
-    is_displayed: false,
-    display_order: 8,
-  },
-  {
-    id: 'mc-damaged-maintenance',
-    card_key: 'maintenanceDamaged',
-    title: 'Damaged & Maintenance',
-    category: 'Condition',
-    description: 'Items reported with damage, fair wear, or due for scheduled servicing',
-    unit_label: 'Items',
-    icon_name: 'AlertCircle',
-    is_displayed: false,
-    display_order: 9,
-  },
-  {
-    id: 'mc-active-purchase-orders',
-    card_key: 'activePurchaseOrders',
-    title: 'Active Purchase Orders',
-    category: 'Financial',
-    description: 'Procurement orders currently in Draft, Sent, or Approved status',
-    unit_label: 'Orders',
-    icon_name: 'Building2',
-    is_displayed: false,
-    display_order: 10,
-  },
-  {
-    id: 'mc-shelf-life-expiry-alerts',
-    card_key: 'expiryAlerts',
-    title: 'Shelf-Life & Expiry Alerts',
-    category: 'Operations',
-    description: 'Perishable & consumable supplies tracked in intervals (6m, 3m, 1m & Expired)',
-    unit_label: 'Alerts',
-    icon_name: 'CalendarClock',
-    is_displayed: true,
-    display_order: 11,
-  },
-];
+
 
 export async function dbUpsertMetricCard(card: DashboardMetricCard) {
   const client = getSupabase();

@@ -57,6 +57,7 @@ import {
   fetchAllFromSupabase,
   fetchItemsFromSupabase,
   dbUpsertItem,
+  dbUpsertItems,
   dbDeleteItem,
   dbInsertTransaction,
   dbUpdateTransaction,
@@ -2238,10 +2239,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return singleItem;
     });
 
-    setItems((prev) => [...createdItems, ...prev]);
-    createdItems.forEach((it) => dbUpsertItem(it).catch((err) => {
-      console.error('Failed to sync added item to Supabase:', err);
-    }));
+    setItems((prev) => {
+      const nextList = [...createdItems, ...prev];
+      safeSetJson(STORAGE_KEYS.ITEMS, nextList);
+      return nextList;
+    });
+
+    dbUpsertItems(createdItems).catch((err) => {
+      console.error('Failed to batch sync added items to Supabase:', err);
+    });
 
     if (createdItems.length === 1) {
       const single = createdItems[0];

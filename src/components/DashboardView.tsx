@@ -136,9 +136,60 @@ export const DashboardView: React.FC<{ onOpenPrdModal: () => void }> = ({ onOpen
     }
   }, [isCustomizeModalOpen, dashboardMetricCards]);
 
+  // Robust resolver that maps any card_key, id, or title variations from Supabase
+  const resolveCardType = (card: DashboardMetricCard): string => {
+    const rawKey = (card.card_key || card.cardKey || '').trim();
+    const id = (card.id || '').trim().toLowerCase();
+    const title = (card.title || '').trim().toLowerCase();
+    const clean = (rawKey || id || title).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+    if (rawKey === 'totalValuation' || clean.includes('valuation') || clean.includes('totalasset') || title.includes('valuation')) {
+      return 'totalValuation';
+    }
+    if (rawKey === 'lowStockAlerts' || clean.includes('lowstock') || clean.includes('stocksafety') || clean.includes('safetyalert') || title.includes('safety') || title.includes('low stock')) {
+      return 'lowStockAlerts';
+    }
+    if (rawKey === 'activeLoans' || clean.includes('activeloan') || clean.includes('fieldloan') || title.includes('loan') || title.includes('deployed')) {
+      return 'activeLoans';
+    }
+    if (rawKey === 'categoriesCount' || clean.includes('categor') || title.includes('categor')) {
+      return 'categoriesCount';
+    }
+    if (rawKey === 'totalMasterSkus' || clean.includes('mastersku') || clean.includes('catalogsku') || clean.includes('totalsku') || title.includes('master catalog') || title.includes('catalog sku')) {
+      return 'totalMasterSkus';
+    }
+    if (rawKey === 'totalPhysicalUnits' || clean.includes('physicalunit') || clean.includes('totalunit') || clean.includes('totalphysical') || title.includes('physical unit')) {
+      return 'totalPhysicalUnits';
+    }
+    if (rawKey === 'setsAndBundles' || clean.includes('set') || clean.includes('bundle') || clean.includes('kit') || title.includes('set') || title.includes('bundle') || title.includes('kit')) {
+      return 'setsAndBundles';
+    }
+    if (rawKey === 'pendingReturns' || clean.includes('pendingreturn') || clean.includes('returnapproval') || title.includes('pending return') || title.includes('return approval')) {
+      return 'pendingReturns';
+    }
+    if (
+      rawKey === 'maintenanceDamaged' ||
+      rawKey === 'damagedMaintenance' ||
+      clean.includes('damaged') ||
+      clean.includes('maintenance') ||
+      title.includes('damaged') ||
+      title.includes('maintenance')
+    ) {
+      return 'maintenanceDamaged';
+    }
+    if (rawKey === 'activePurchaseOrders' || clean.includes('purchaseorder') || clean.includes('activepo') || title.includes('purchase order') || title.includes('active po')) {
+      return 'activePurchaseOrders';
+    }
+    if (rawKey === 'expiryAlerts' || clean.includes('expiry') || clean.includes('shelflife') || title.includes('expiry') || title.includes('shelf-life') || title.includes('shelf life')) {
+      return 'expiryAlerts';
+    }
+
+    return rawKey;
+  };
+
   // Dynamic runtime data generator for each database metric card
   const getMetricCardRuntime = (card: DashboardMetricCard) => {
-    const key = (card.card_key || card.cardKey || '').trim();
+    const key = resolveCardType(card);
     switch (key) {
       case 'totalValuation':
         return {
